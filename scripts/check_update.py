@@ -5,15 +5,19 @@
 - 调用 GitHub API 读取远程最新 tag
 - 比对并返回结果
 - 不阻塞主流程（5 秒超时，静默失败）
+- 支持手动检查 + 自动检查（带每日缓存）
 
 用法：
     python3 scripts/check_update.py
     # 或作为模块：
-    from scripts.check_update import check_update
-    result = check_update()
+    from scripts.check_update import check_update, auto_check_update
+    result = check_update()                # 手动检查
+    message = auto_check_update()          # 自动检查（带每日缓存，返回 None 或提示文字）
 """
 import json
+import os
 import subprocess
+import time
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -24,6 +28,14 @@ GITHUB_REPO = "fictivedistance/balipinglunyuan"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/tags"
 TIMEOUT_SECONDS = 5
 SKILL_DIR = Path(__file__).parent.parent
+
+# 缓存配置
+CACHE_DIR = Path.home() / ".cache" / "巴黎评论员"
+CACHE_FILE = CACHE_DIR / "last_check.json"
+CACHE_TTL_SECONDS = 86400  # 24 小时
+
+# 环境变量：关闭自动检查
+DISABLE_AUTO_CHECK_ENV = "BALIPINGLUNYUAN_AUTO_UPDATE_CHECK"
 
 
 def get_local_tag() -> str | None:
@@ -147,6 +159,83 @@ def main():
         else:
             print("ℹ️  无版本信息")
         return 0
+
+
+def _read_cache() -> dict | None:
+    """读取缓存（返回 None 表示无缓存或缓存已过期）"""
+    if not CACHE_FILE.exists():
+        return None
+    try:
+        with CACHE_FILE.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        checked_at = data.get("checked_at", 0)
+        # 过期检查
+        if time.time() - checked_at > CACHE_TTL_SECONDS:
+            return None
+        return data
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _write_cache(local: str | None, remote: str | None) -> None:
+    """写入缓存（出错静默）"""
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_data = {
+            "checked_at": time.time(),
+            "local": local,
+            "remote": remote,
+        }
+        with CACHE_FILE.open("w", encoding="utf-8") as f:
+            json.dump(cache_data, f, ensure_ascii=False)
+    except OSError:
+        # 缓存写入失败静默（不影响主流程）
+        pass
+
+
+def auto_check_update() -> str | None:
+    """
+    自动检查更新（带每日缓存）
+
+    - 每日最多请求一次 GitHub
+    - 缓存文件：~/.cache/巴黎评论员/last_check.json
+    - 环境变量 BALIPINGLUNYUAN_AUTO_UPDATE_CHECK=false 可关闭
+    - 静默失败：网络错误、读写错误都不抛异常
+    - 仅当有更新时返回提示文字（str），否则返回 None
+
+    Returns:
+        str | None: 提示文字（仅在有更新时），None 表示无需提示或静默失败
+    """
+    # 检查环境变量是否关闭
+    if os.environ.get(DISABLE_AUTO_CHECK_ENV, "").lower() in ("false", "0", "no", "off"):
+        return None
+
+    # 尝试读取缓存
+    cached = _read_cache()
+    if cached is not None:
+        # 缓存有效：复用上次结果
+        local = cached.get("local")
+        remote = cached.get("remote")
+    else:
+        # 缓存失效：重新检查
+        try:
+            result = check_update()
+            local = result["local"]
+            remote = result["remote"]
+            _write_cache(local, remote)
+        except Exception:
+            # 静默失败：网络错误等不打扰主流程
+            return None
+
+    # 判断是否有更新
+    if local and remote and local != remote:
+        return (
+            f"\n\n💡 提示：巴黎评论员 Skill 有新版本可用\n"
+            f"   当前版本：{local}\n"
+            f"   最新版本：{remote}\n"
+            f"   升级方式：cd ~/.openclaw/workspace/skills/巴黎评论员 && git pull origin main && git fetch --tags"
+        )
+    return None
 
 
 if __name__ == "__main__":
