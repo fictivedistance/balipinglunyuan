@@ -319,9 +319,26 @@ def format_result(cmd: str, result: dict) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description='巴黎评论员 - 自然语言接口')
-    parser.add_argument('question', nargs='+', help='自然语言提问')
+    parser.add_argument('question', nargs='*', help='自然语言提问')
     parser.add_argument('--raw', action='store_true', help='输出原始 JSON')
+    parser.add_argument('--check-update', action='store_true', help='检查是否有新版本')
     args = parser.parse_args()
+    
+    # 检查更新模式
+    if args.check_update:
+        from check_update import check_update
+        result = check_update()
+        if result['has_update']:
+            print(result['message'])
+            sys.exit(1)
+        else:
+            if result['local'] and result['remote']:
+                print(f"✅ 已是最新版本：{result['local']}")
+            elif result['local']:
+                print(f"📦 本地版本：{result['local']}（远程无版本信息）")
+            else:
+                print("ℹ️  无版本信息")
+            sys.exit(0)
     
     question = ' '.join(args.question)
     data = json.loads(DATA.read_text())
