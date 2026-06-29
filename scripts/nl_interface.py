@@ -384,6 +384,15 @@ def main():
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print(format_result(cmd, result))
+        # 自动检查更新（带每日缓存，有更新时追加提示）
+        try:
+            from check_update import auto_check_update
+            update_msg = auto_check_update()
+            if update_msg:
+                print(update_msg)
+        except Exception:
+            # 自动检查失败静默：不影响主流程
+            pass
 
 
 if __name__ == '__main__':
