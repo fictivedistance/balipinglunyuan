@@ -252,5 +252,7 @@ python3 scripts/validate_skill_v1.py
 ---
 
 **技能版本**：v1.0
+
 **发布日期**：2026-06-29
+
 **数据版本**：v283 RC
