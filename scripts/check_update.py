@@ -45,8 +45,29 @@ def get_local_tag() -> str | None:
     return None
 
 
+def _version_key(tag: str) -> tuple:
+    """
+    把 tag 字符串转为可比较的元组
+    例如 v1.10.0 → (1, 10, 0)，v1.9.0 → (1, 9, 0)
+    支持 'v' 前缀、预发布后缀（如 1.0.0-rc1 → (1, 0, 0, -1, 'rc1')）
+    """
+    import re
+    s = tag.lstrip("v")
+    m = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:-(.+))?", s)
+    if m:
+        major, minor, patch, pre = m.groups()
+        key = (int(major), int(minor), int(patch))
+        if pre:
+            # 预发布版低于正式版
+            key = key + (-1, pre)
+        else:
+            key = key + (1,)  # 正式版标记
+        return key
+    return (0, tag)  # 解析失败：按字符串兜底
+
+
 def get_remote_tag() -> str | None:
-    """从 GitHub API 获取远程最新 tag"""
+    """从 GitHub API 获取远程最新 tag（按版本号排序）"""
     try:
         req = urllib.request.Request(
             GITHUB_API_URL,
@@ -55,7 +76,13 @@ def get_remote_tag() -> str | None:
         with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as response:
             tags = json.loads(response.read().decode("utf-8"))
             if tags and len(tags) > 0:
-                return tags[0].get("name")
+                # GitHub API 默认按创建时间排序，需按版本号重新排序取最新
+                tag_names = [t.get("name", "") for t in tags if t.get("name")]
+                if not tag_names:
+                    return None
+                # 按版本号排序取最新（注意：sort 默认按元组逐个元素比较）
+                tag_names.sort(key=_version_key, reverse=True)
+                return tag_names[0]
     except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError):
         pass
     return None
