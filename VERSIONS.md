@@ -12,6 +12,28 @@
 
 ---
 
+## v1.2.1 (2026-06-30)
+
+### 安装说明加入指定 tag 版本号指引
+
+**背景：** 有用户反馈 Agent 默认使用 `git clone` 装到了老版本（如 v1.0.0）或未标记的 commit，无法获得最新功能。
+
+**修复：**
+- `INSTALL.md` 顶部加 ⚠️ 重要提示：不要使用默认 `git clone`
+- `README.md` 安装段落加警告
+- 所有安装方式都明确指定 `v1.2.0` tag
+- 新增"如何升级到新版本"段落
+- 新增"下载指定 tag 的 ZIP"方式
+
+**安装示例：**
+```bash
+git clone --branch v1.2.0 --depth 1 https://github.com/fictivedistance/balipinglunyuan.git
+```
+
+**Commit：** `dddeb04 docs: 安装说明加入指定 tag 版本号指引`
+
+---
+
 ## v1.2.0 (2026-06-29)
 
 ### 主流程集成自动版本检查（带每日缓存）
