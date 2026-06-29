@@ -105,12 +105,38 @@ def detect_command(question: str) -> dict:
     
     # === interview-status / 访谈状态 ===
     if any(kw in q for kw in ['访谈', '采访', '巴黎评论', '中文版', '收录了吗']):
-        # 提取作家名
-        for prefix in ['访谈状态', '被访谈过吗', '有没有访谈', '查访谈', '收录了吗']:
-            if prefix in q:
-                name = q.replace(prefix, '').strip('吗？?的')
-                if name:
-                    return {'cmd': 'interview-status', 'name': name}
+        # 使用正则模式提取作家名，避免 prefix replace 错误
+        # 模式 1：X 被《巴黎评论》访谈过/采访过
+        m = re.search(r'(.+?)被(《巴黎评论》|巴黎评论|收录|访谈|采访)', q)
+        if m:
+            return {'cmd': 'interview-status', 'name': m.group(1).strip()}
+        # 模式 2：X 访谈过没有/被访谈过没有
+        m = re.search(r'(.+?)(被|访谈)过(没|了)', q)
+        if m:
+            return {'cmd': 'interview-status', 'name': m.group(1).strip()}
+        # 模式 3：X 有没有中文版
+        m = re.search(r'(.+?)有没有(中文版|被访谈|被收录)', q)
+        if m:
+            return {'cmd': 'interview-status', 'name': m.group(1).strip()}
+        # 模式 4：查一下/查 X 的访谈状态
+        m = re.search(r'(?:查一下|查|看看)\s*(.+?)的?(?:访谈状态|被访谈|被收录|访谈过)', q)
+        if m:
+            return {'cmd': 'interview-status', 'name': m.group(1).strip()}
+        # 模式 5：X 被访谈过吗
+        m = re.search(r'(.+?)被访谈过(吗|没|了)', q)
+        if m:
+            return {'cmd': 'interview-status', 'name': m.group(1).strip()}
+        # 模式 6：《巴黎评论》访谈过 X 吗
+        m = re.search(r'(《巴黎评论》|巴黎评论|该采访|访谈)过(.{2,20})吗', q)
+        if m:
+            return {'cmd': 'interview-status', 'name': m.group(2).strip()}
+        # 最后退路：去掉所有修饰词
+        name = re.sub(r'[？?吗。]', '', q)
+        for kw in ['访谈状态', '被访谈过', '访谈过', '有没有中文版', '有没有', '查一下', '查', '看看', '被', '《巴黎评论》', '巴黎评论', '访谈']:
+            name = name.replace(kw, '')
+        name = name.strip()
+        if name:
+            return {'cmd': 'interview-status', 'name': name}
     
     # === stats / 统计 ===
     if any(kw in q for kw in ['统计', '多少作家', '总共有', '数据概况', '多少边', '多少节点']):
@@ -154,8 +180,9 @@ def format_result(cmd: str, result: dict) -> str:
     elif cmd == 'interview-status':
         has_cn = result.get('has_chinese_interview', False)
         node = result.get('node')
+        catalog_info = result.get('catalog_info') or result.get('catalog_record')
         
-        lines = [f"📖 「{result['resolved_name']}」访谈状态"]
+        lines = [f"「{result['resolved_name']}」访谈状态"]
         lines.append("")
         
         if has_cn:
@@ -163,8 +190,15 @@ def format_result(cmd: str, result: dict) -> str:
             lines.append(f"   译者：{result.get('translator', 'N/A')}")
             lines.append(f"   采访者：{result.get('interviewer', 'N/A')}")
             lines.append(f"   年份：{result.get('year', 'N/A')}")
-        elif result.get('catalog_record'):
-            lines.append("✅ 有英文访谈，但尚未出版中文版")
+        elif catalog_info:
+            lines.append("✅ 被《巴黎评论》访谈过（英文版）")
+            lines.append(f"   期号：{catalog_info.get('number', 'N/A')}")
+            lines.append(f"   系列：{catalog_info.get('series', 'N/A')}")
+            lines.append(f"   年份：{catalog_info.get('year', 'N/A')}")
+            lines.append(f"   链接：{catalog_info.get('url', 'N/A')}")
+            if not has_cn:
+                lines.append("")
+                lines.append("   📕 尚未出版中文版")
         else:
             lines.append("❌ 未被《巴黎评论》访谈过")
         

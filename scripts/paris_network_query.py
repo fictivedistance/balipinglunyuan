@@ -334,7 +334,9 @@ def get_interview_status(data, writer_name):
         year = first.get('year')
     
     # Catalog info (from catalog records)
+    # First take whatever unified_search already found (covers both in-graph and catalog-only cases)
     catalog_info = result.get('catalog_record')
+    # If not found yet and writer is in graph, also try resolving by Chinese name
     if not catalog_info and result['is_in_graph'] and result['matched_node']:
         # Get catalog info via the resolved Chinese name
         resolved = result['resolved_name']
