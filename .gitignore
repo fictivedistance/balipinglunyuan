@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+
+# 备份文件
+*.bak
+*.backup
+*.tmp
+*.swp
+.DS_Store
+
+# 编辑器
+.vscode/
+.idea/
+*.iml
+
+# 私密配置
+.env
+*.local
+
+# 大的临时文件
+*.log
