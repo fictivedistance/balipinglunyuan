@@ -1,0 +1,103 @@
+name: 巴黎评论员
+display_name: Paris Review Analyst · 巴黎评论员
+version: 1.0.0
+description: |
+  《巴黎评论》作家关系网智能查询技能。基于简体中文版《巴黎评论》系列的
+  作家关系知识图谱，支持自然语言查询访谈状态、作家关系、排行榜、社群、
+  故事路径。
+author:
+  name: 巴黎评论编辑部
+  email: fictivedistance@agent.qq.com
+  github: fictivedistance
+license: MIT
+homepage: https://www.fictivedistance.com
+
+# 入口配置 - Agent 用来发现技能的命令
+entry_point: scripts/nl_interface.py
+
+# 支持的查询命令
+commands:
+  - name: stats
+    description: 统计概览（节点/边/访谈数）
+  - name: search
+    description: 搜索作家（中英文双向匹配）
+  - name: author
+    description: 作家详情（入边/出边）
+  - name: interview-status
+    description: 访谈状态（中文版收录信息）
+  - name: leaderboard
+    description: 作家排行榜（8 种排序维度）
+  - name: edge
+    description: 双边关系查询
+  - name: community
+    description: 社群成员查询
+  - name: story-path
+    description: 故事路径查询
+
+# 触发关键词 - Agent 用这些词判断何时加载此技能
+triggers:
+  - 巴黎评论
+  - 巴黎评论员
+  - 作家关系网
+  - 作家访谈
+  - 作家宇宙
+  - 访谈状态
+  - 作家关系
+  - 海明威
+  - 福克纳
+  - 博尔赫斯
+  - fictivedistance
+
+# 自然语言提问模式 - Agent 用这些 regex 识别用户意图
+patterns:
+  - ".*被《巴黎评论》访谈过吗.*"
+  - ".*有没有中文版.*"
+  - ".*和.*有什么关系.*"
+  - ".*怎么评价.*"
+  - ".*提到过.*"
+  - ".*被提及最多.*"
+  - ".*影响力最高.*"
+  - ".*排行榜.*"
+  - ".*社群.*"
+  - ".*故事路径.*"
+
+# 依赖
+dependencies:
+  python: ">=3.8"
+  packages: []
+
+# 数据文件
+data:
+  - path: data/paris_network_v1_data.json
+    size_mb: 2.5
+    description: 作家关系图谱核心数据（719节点/2798边）
+
+# 安装方式
+install:
+  method: directory-copy
+  target_dir: ~/.openclaw/workspace/skills/巴黎评论员
+  repo_url: https://github.com/fictivedistance/balipinglunyuan
+  commands:
+    - "git clone https://github.com/fictivedistance/balipinglunyuan.git"
+    - "cp -r balipinglunyuan ~/.openclaw/workspace/skills/巴黎评论员"
+    - "cd ~/.openclaw/workspace/skills/巴黎评论员 && python3 scripts/validate_skill_v1.py"
+
+# 验证
+validation:
+  command: "python3 scripts/validate_skill_v1.py"
+  expected: "所有测试通过！skill v1 与网页端 100% 对齐"
+
+# 标签 - 用于技能市场搜索
+tags:
+  - literature
+  - paris-review
+  - writer-network
+  - knowledge-graph
+  - chinese
+  - nlp-query
+
+# 兼容性
+compatibility:
+  openclaw: ">=2026.04"
+  claude-code: ">=1.0"
+  python: ">=3.8"
