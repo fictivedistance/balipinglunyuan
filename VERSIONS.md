@@ -12,6 +12,40 @@
 
 ---
 
+## v1.2.2 (2026-06-30)
+
+### Bug 修复：目录作家链接 Markdown 化 + 验证脚本数据硬编码改为范围检查
+
+**背景：** 用户反馈 2 个 bug，影响使用体验和数据可维护性。
+
+**Bug 1：目录作家链接不可点击**
+- `scripts/nl_interface.py:198` 输出 `链接：URL` 纯文本
+- 飞书/webchat 用户看不到可点击链接，终端用户无法直接访问
+
+**修复：**
+- 改为 Markdown 链接格式：`链接：[The Paris Review 访谈原文](URL)`
+- 飞书/webchat 渲染为蓝色可点击链接
+- 终端保留完整 URL（可手动复制）
+- N/A 兜底保留（catalog 无 url 字段时显示"链接：N/A"）
+
+**Bug 2：validate_skill_v1.py 数据硬编码**
+- 脚本内硬编码 719 / 2798 / 454 / 191
+- 改数据后需手动改脚本才能过验证
+
+**修复：**
+- 改为范围检查（基于 v1.0 ~ v1.2.1 历史数据 + 30% 余量）
+- `nodes: (500, 1500)`、`links: (1000, 5000)`、`catalog_records: (300, 600)`、`authors_with_chinese_interview: (50, 300)`
+- 数据更新无需修改脚本；保留数量级异常保护
+
+**验证：**
+- ✅ `validate_skill_v1.py` 全量测试通过
+- ✅ 真实查询（Joyce Cary、Irwin Shaw 等无中文版作家）输出 Markdown 链接
+- ✅ N/A 兜底验证（François Mauriac 等无 url 字段的作家）
+
+**Commit：** `922a7c8 fix: 目录作家链接改为 Markdown 格式 + 验证脚本数据硬编码改为范围检查`
+
+---
+
 ## v1.2.1 (2026-06-30)
 
 ### 安装说明加入指定 tag 版本号指引
