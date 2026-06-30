@@ -1,5 +1,8 @@
 # 巴黎评论员
 
+[![Latest Version](https://img.shields.io/github/v/tag/fictivedistance/balipinglunyuan?label=version&sort=semver)](https://github.com/fictivedistance/balipinglunyuan/tags)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
+
 > 《巴黎评论》作家关系网络查询技能
 
 一个供AI agent使用的《巴黎评论》skill，基于简体中文版《巴黎评论》系列作家关系网络图谱创建，支持《巴黎评论》系列读者用自然语言查询访谈状态、作家关系、排行榜等。
@@ -261,6 +264,21 @@ python3 scripts/validate_skill_v1.py
 ---
 
 ## 更新日志
+
+### v1.2.2 (2026-06-30)
+- 访谈状态查询中的作家链接改为 Markdown 格式，飞书/webchat 端可点击跳转原文
+
+### v1.2.1 (2026-06-30)
+- 安装说明加入指定 tag 版本号指引，避免装到老版本
+- 新增多种安装方式（手动 git、指定 tag ZIP）
+
+### v1.2.0 (2026-06-29)
+- 主流程集成自动版本检查（每日缓存）
+- 有更新时会在使用中看到升级提示
+
+### v1.1.0 (2026-06-29)
+- 新增手动版本检查功能（`--check-update`）
+- 远程 tag 排序修复（按版本号比较）
 
 ### v1.0 (2026-06-29)
 - 首个公开发布版本
