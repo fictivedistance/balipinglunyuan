@@ -195,7 +195,11 @@ def format_result(cmd: str, result: dict) -> str:
             lines.append(f"   期号：{catalog_info.get('number', 'N/A')}")
             lines.append(f"   系列：{catalog_info.get('series', 'N/A')}")
             lines.append(f"   年份：{catalog_info.get('year', 'N/A')}")
-            lines.append(f"   链接：{catalog_info.get('url', 'N/A')}")
+            url = catalog_info.get('url', '')
+            if url:
+                lines.append(f"   链接：[The Paris Review 访谈原文]({url})")
+            else:
+                lines.append("   链接：N/A")
             if not has_cn:
                 lines.append("")
                 lines.append("   📕 尚未出版中文版")
