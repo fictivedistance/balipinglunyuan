@@ -43,7 +43,7 @@
 ## 安装
 
 > **⚠️ 重要：请按指定版本安装，不要使用 `git clone` 默认拉取 main 分支。**
-> 默认拉取的是 main 分支最新代码，**不是**最新 tag。推荐明确指定 tag 版本号（如 `v1.2.0`）以避免装到老版本。
+> 默认拉取的是 main 分支最新代码，**不是**最新 tag。推荐明确指定 tag 版本号（如 `v1.2.2`）以避免装到老版本。
 >
 > **最新版本：** https://github.com/fictivedistance/balipinglunyuan/tags
 
@@ -53,18 +53,18 @@
 
 ```
 帮我装这个技能：https://github.com/fictivedistance/balipinglunyuan
-并安装到 v1.2.0 tag 版本
+并安装到 v1.2.2 tag 版本
 ```
 
-Agent 会自动拉取 v1.2.0 tag、安装、验证。
+Agent 会自动拉取 v1.2.2 tag、安装、验证。
 
-> 💡 **给 Agent 的补充提示**：“使用 git clone --branch v1.2.0 --depth 1”或“检出 v1.2.0 标签”。
+> 💡 **给 Agent 的补充提示**：“使用 git clone --branch v1.2.2 --depth 1”或“检出 v1.2.2 标签”。
 
 ### 手动安装
 
 ```bash
 # ⚠️ 关键：使用 --branch 指定 tag，不要省略
-git clone --branch v1.2.0 --depth 1 https://github.com/fictivedistance/balipinglunyuan.git
+git clone --branch v1.2.2 --depth 1 https://github.com/fictivedistance/balipinglunyuan.git
 
 # 复制到 OpenClaw skills 目录
 cp -r balipinglunyuan ~/.openclaw/workspace/skills/巴黎评论员
@@ -76,7 +76,7 @@ python3 ~/.openclaw/workspace/skills/巴黎评论员/scripts/validate_skill_v1.p
 ### 独立使用
 
 ```bash
-git clone --branch v1.2.0 --depth 1 https://github.com/fictivedistance/balipinglunyuan.git
+git clone --branch v1.2.2 --depth 1 https://github.com/fictivedistance/balipinglunyuan.git
 cd balipinglunyuan
 python3 scripts/nl_interface.py "海明威和福克纳有什么关系"
 ```
@@ -86,7 +86,7 @@ python3 scripts/nl_interface.py "海明威和福克纳有什么关系"
 如果你的环境不支持 git，可以下载指定版本的 ZIP：
 
 ```
-https://github.com/fictivedistance/balipinglunyuan/archive/refs/tags/v1.2.0.zip
+https://github.com/fictivedistance/balipinglunyuan/archive/refs/tags/v1.2.2.zip
 ```
 
 下载后解压，将文件夹重命名为 `巴黎评论员`，移动到 `~/.openclaw/workspace/skills/`。
@@ -97,7 +97,7 @@ https://github.com/fictivedistance/balipinglunyuan/archive/refs/tags/v1.2.0.zip
 
 ```bash
 cd ~/.openclaw/workspace/skills/巴黎评论员
-git pull origin v1.2.0
+git pull origin v1.2.2
 git fetch --tags
 ```
 
@@ -307,8 +307,6 @@ python3 scripts/validate_skill_v1.py
 联系邮箱：<fictivedistance@agent.qq.com>
 
 ---
-
-**技能版本**：v1.0
 
 **发布日期**：2026-06-29
 
