@@ -33,11 +33,18 @@ def main():
     
     # === Data integrity ===
     print("\n[1] 数据完整性")
-    assert_true(stats['nodes'] == 719, f"nodes {stats['nodes']}")
-    assert_true(stats['links'] == 2798, f"links {stats['links']}")
-    assert_true(stats['catalog_records'] == 454, f"catalog_records {stats['catalog_records']}")
-    assert_true(stats['authors_with_chinese_interview'] == 191, f"authors_with_chinese {stats['authors_with_chinese_interview']}")
-    print("   ✅ 核心数据完整性 OK")
+    # v1.2.2: 改为范围检查（基于 v1.0 ~ v1.2.1 历史数据范围 + 30% 余量）
+    # 改数据时不再需要修改这些数值；保留范围保护防止数量级异常
+    expected_ranges = {
+        'nodes': (500, 1500),                       # 作家节点数
+        'links': (1000, 5000),                      # 关系边
+        'catalog_records': (300, 600),              # 访谈目录记录
+        'authors_with_chinese_interview': (50, 300), # 中文版收录作家数
+    }
+    for key, (lo, hi) in expected_ranges.items():
+        val = stats[key]
+        assert_true(lo < val < hi, f"{key}={val} 超出合理范围 ({lo}, {hi})")
+    print(f"   ✅ counts 在合理范围内：{stats}")
     
     # === name_map coverage ===
     print("\n[2] 名字映射覆盖")
