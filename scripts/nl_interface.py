@@ -16,135 +16,218 @@ from paris_network_query import (
 )
 
 
+# ============================================================
+# 命令检测（拆分为独立函数，便于维护和扩展）
+# ============================================================
+
+def _detect_leaderboard(q: str) -> dict | None:
+    """检测排行榜类查询"""
+    if not any(kw in q for kw in ['排行榜', '排名', '最多', '最高', '前十', 'top', 'Top', '排第几',
+                                   '最伟大', '最牛', '最重要', '最受欢迎', '最受',
+                                   '最讨厌', '最反感', '最喜爱', '最赞赏', '最好评', '最差']):
+        return None
+    
+    sort_by = 'degree'
+    
+    if any(kw in q for kw in ['提及', '被提到', 'inDegree']):
+        sort_by = 'inDegree'
+    elif any(kw in q for kw in ['提到', '评价别人', 'outDegree']):
+        sort_by = 'outDegree'
+    elif any(kw in q for kw in ['影响力', 'pageRank', '重要', '伟大', '牛']):
+        sort_by = 'pageRank'
+    elif any(kw in q for kw in ['桥梁', '中介', 'betweenness']):
+        sort_by = 'betweenness'
+    elif any(kw in q for kw in ['正面', '好评', 'positive', '喜爱', '欢迎', '赞赏']):
+        sort_by = 'positiveIn'
+    elif any(kw in q for kw in ['负面', '批评', 'negative', '讨厌', '反感']):
+        sort_by = 'negativeIn'
+    elif any(kw in q for kw in ['影响', 'influence']):
+        sort_by = 'influenceIn'
+    
+    # 提取数字
+    top = 10
+    num_match = re.search(r'前\s*(\d+)', q) or re.search(r'top\s*(\d+)', q, re.I) or re.search(r'(\d+)\s*名', q)
+    if num_match:
+        top = int(num_match.group(1))
+    
+    return {'cmd': 'leaderboard', 'sort_by': sort_by, 'top': top}
+
+
+def _extract_two_names(q: str) -> tuple[str, str] | None:
+    """从关系查询中提取两个作家名"""
+    # 清理问题后缀
+    q_clean = q
+    for suffix in ['有什么关系', '的关系', '有联系吗', '有关系吗', '有关系', '有联系',
+                   '怎么看', '如何看', '的看法', '怎么评价', '如何评价',
+                   '的评价', '提到过', '提到', '看法', '评价', '吗', '呢', '？', '?']:
+        if q_clean.endswith(suffix):
+            q_clean = q_clean[:-len(suffix)]
+            break
+    
+    # 尝试多种分隔符
+    for sep in ['和', '与', '跟', '对']:
+        if sep in q_clean:
+            parts = q_clean.split(sep, 1)
+            name1 = parts[0].strip()
+            name2 = parts[1].strip()
+            # 清理 name2 开头可能残留的"的"
+            name2 = name2.lstrip('的').strip()
+            if name1 and name2 and len(name1) > 1 and len(name2) > 1:
+                return (name1, name2)
+    
+    return None
+
+
+def _detect_edge(q: str) -> dict | None:
+    """检测双边关系查询"""
+    relation_markers = ['和', '与', '跟', '对', '怎么评价', '如何评价', '评价', '提到', '看法']
+    if not any(m in q for m in relation_markers):
+        return None
+    
+    names = _extract_two_names(q)
+    if names:
+        return {'cmd': 'edge', 'name1': names[0], 'name2': names[1]}
+    
+    return None
+
+
+def _detect_community(q: str) -> dict | None:
+    """检测社群查询"""
+    if not any(kw in q for kw in ['社群', '社区', 'community', '同一个群', '同属', '成员']):
+        return None
+    
+    id_match = re.search(r'社群\s*(\d+)', q) or re.search(r'community\s*(\d+)', q, re.I)
+    if id_match:
+        return {'cmd': 'community', 'community_id': int(id_match.group(1))}
+    
+    if any(kw in q for kw in ['哪个社群', '哪个社区', '在哪个群']):
+        return {'cmd': '_author_first_then_community', 'question': q}
+    
+    return None
+
+
+def _detect_story_path(q: str) -> dict | None:
+    """检测故事路径查询"""
+    if not any(kw in q for kw in ['故事路径', '故事线', '路径', '主题', 'story']):
+        return None
+    
+    # 提取数字索引
+    key_match = re.search(r'第\s*(\d+)\s*条', q) or re.search(r'(\d+)', q)
+    if key_match:
+        return {'cmd': 'story-path', 'key': key_match.group(1)}
+    
+    # 动态关键词匹配：从数据中提取所有 story path 标题的关键词
+    try:
+        data = json.loads(DATA.read_text())
+        paths = data.get('story_paths', {}).get('paths', [])
+        for p in paths:
+            title = p.get('title', '')
+            # 取标题中 2 字以上的关键词进行匹配
+            for kw_len in range(len(title), 1, -1):
+                for start in range(len(title) - kw_len + 1):
+                    fragment = title[start:start + kw_len]
+                    if fragment in q and len(fragment) >= 2:
+                        return {'cmd': 'story-path', 'key': fragment}
+    except Exception:
+        pass
+    
+    # 静态退路
+    for kw in ['拉美', '女性', '现代主义', '美国', '诗歌', '四种', '立场', '美学',
+               '乔伊斯', '卡夫卡', '庞德', '福克纳', '詹姆斯', '阅读']:
+        if kw in q:
+            return {'cmd': 'story-path', 'key': kw}
+    
+    return {'cmd': 'story-path_list'}
+
+
+def _detect_author(q: str) -> dict | None:
+    """检测作家详情查询"""
+    if not any(kw in q for kw in ['详情', '详细信息', '所有关系', '连接数', '入边', '出边',
+                                   '的关系网', '关系图谱', '哪些作家提到']):
+        return None
+    
+    # 提取作家名：去掉触发词和常见前缀
+    name = q
+    for trigger in ['的详细信息', '的详情', '详情', '详细信息', '的所有关系', '所有关系',
+                    '的连接数', '连接数', '的入边', '入边', '的出边', '出边',
+                    '的关系网', '关系图谱', '有哪些作家提到']:
+        name = name.replace(trigger, '')
+    for prefix in ['查询', '查一下', '查', '看看', '关于', '作家']:
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+    name = name.strip('吗？?的 \t')
+    
+    if name and len(name) > 1:
+        return {'cmd': 'author', 'name': name, 'limit': 20}
+    
+    return None
+
+
+def _detect_interview_status(q: str) -> dict | None:
+    """检测访谈状态查询"""
+    if not any(kw in q for kw in ['访谈', '采访', '巴黎评论', '中文版', '收录']):
+        return None
+    
+    # 模式 1：X 被《巴黎评论》访谈过/采访过
+    m = re.search(r'(.+?)被(《巴黎评论》|巴黎评论|收录|访谈|采访)', q)
+    if m:
+        return {'cmd': 'interview-status', 'name': m.group(1).strip()}
+    # 模式 2：X 访谈过没有/被访谈过没有
+    m = re.search(r'(.+?)(被|访谈)过(没|了)', q)
+    if m:
+        return {'cmd': 'interview-status', 'name': m.group(1).strip()}
+    # 模式 3：X 有没有中文版
+    m = re.search(r'(.+?)有没有(中文版|被访谈|被收录)', q)
+    if m:
+        return {'cmd': 'interview-status', 'name': m.group(1).strip()}
+    # 模式 4：查一下/查 X 的访谈状态
+    m = re.search(r'(?:查一下|查|看看)\s*(.+?)的?(?:访谈状态|被访谈|被收录|访谈过)', q)
+    if m:
+        return {'cmd': 'interview-status', 'name': m.group(1).strip()}
+    # 模式 5：X 被访谈过吗
+    m = re.search(r'(.+?)被访谈过(吗|没|了)', q)
+    if m:
+        return {'cmd': 'interview-status', 'name': m.group(1).strip()}
+    # 模式 6：《巴黎评论》访谈过 X 吗
+    m = re.search(r'(《巴黎评论》|巴黎评论|该采访|访谈)过(.{2,20})吗', q)
+    if m:
+        return {'cmd': 'interview-status', 'name': m.group(2).strip()}
+    # 退路：去掉所有修饰词
+    name = re.sub(r'[？?吗。]', '', q)
+    for kw in ['访谈状态', '被访谈过', '访谈过', '有没有中文版', '有没有', '查一下', '查', '看看', '被', '《巴黎评论》', '巴黎评论', '访谈']:
+        name = name.replace(kw, '')
+    name = name.strip()
+    if name:
+        return {'cmd': 'interview-status', 'name': name}
+    
+    return None
+
+
+def _detect_stats(q: str) -> dict | None:
+    """检测统计查询"""
+    if any(kw in q for kw in ['统计', '多少作家', '总共有', '数据概况', '多少边', '多少节点']):
+        return {'cmd': 'stats'}
+    return None
+
+
 def detect_command(question: str) -> dict:
     """根据自然语言提问检测要执行的命令和参数。"""
     q = question.strip()
     
-    # === leaderboard / 排行榜 ===
-    if any(kw in q for kw in ['排行榜', '排名', '最多', '最高', '前十', 'top', 'Top', '排第几']):
-        sort_by = 'degree'
-        top = 10
-        
-        if any(kw in q for kw in ['提及', '被提到', 'inDegree']):
-            sort_by = 'inDegree'
-        elif any(kw in q for kw in ['提到', '评价别人', 'outDegree']):
-            sort_by = 'outDegree'
-        elif any(kw in q for kw in ['影响力', 'pageRank', '重要']):
-            sort_by = 'pageRank'
-        elif any(kw in q for kw in ['桥梁', '中介', 'betweenness']):
-            sort_by = 'betweenness'
-        elif any(kw in q for kw in ['正面', '好评', 'positive']):
-            sort_by = 'positiveIn'
-        elif any(kw in q for kw in ['负面', '批评', 'negative']):
-            sort_by = 'negativeIn'
-        elif any(kw in q for kw in ['影响', 'influence']):
-            sort_by = 'influenceIn'
-        
-        # 提取数字
-        num_match = re.search(r'前\s*(\d+)', q) or re.search(r'top\s*(\d+)', q, re.I) or re.search(r'(\d+)\s*名', q)
-        if num_match:
-            top = int(num_match.group(1))
-        
-        return {'cmd': 'leaderboard', 'sort_by': sort_by, 'top': top}
+    for detector in [_detect_leaderboard, _detect_edge, _detect_community,
+                     _detect_story_path, _detect_author, _detect_interview_status,
+                     _detect_stats]:
+        result = detector(q)
+        if result is not None:
+            return result
     
-    # === edge / 双边关系 ===
-    # 匹配模式："A 和 B 的关系"、"A 怎么评价 B"、"A 提到过 B 吗"
-    and_patterns = [
-        r'(.+?)(和|与|跟|对|怎么评价|如何评价|评价|提到|看法)(.+)',
-        r'(.+?)(和|与|跟)(.+?)(的关系|有联系|有关系|的联系)',
-    ]
-    
-    for pattern in and_patterns:
-        match = re.search(pattern, q)
-        if match:
-            name1 = match.group(1).strip()
-            name2 = match.group(3).strip()
-            
-            # 清理后缀
-            for suffix in ['的关系', '有什么关系', '有联系吗', '有关系吗', '吗', '呢', '？', '?', '怎么看', '如何看', '的看法']:
-                name2 = name2.replace(suffix, '').strip()
-            
-            if name1 and name2 and len(name1) > 1 and len(name2) > 1:
-                return {'cmd': 'edge', 'name1': name1, 'name2': name2}
-    
-    # === community / 社群 ===
-    if any(kw in q for kw in ['社群', '社区', 'community', '同一个群', '同属', '成员']):
-        # 提取数字
-        id_match = re.search(r'社群\s*(\d+)', q) or re.search(r'community\s*(\d+)', q, re.I)
-        if id_match:
-            return {'cmd': 'community', 'community_id': int(id_match.group(1))}
-        
-        # 问某作家在哪个社群
-        if any(kw in q for kw in ['哪个社群', '哪个社区', '在哪个群']):
-            # 先找到作家名，再查他的社群
-            return {'cmd': '_author_first_then_community', 'question': q}
-    
-    # === story-path / 故事路径 ===
-    if any(kw in q for kw in ['故事路径', '故事线', '路径', '主题', 'story']):
-        # 提取关键词或数字
-        key_match = re.search(r'第\s*(\d+)\s*条', q) or re.search(r'(\d+)', q)
-        if key_match:
-            return {'cmd': 'story-path', 'key': key_match.group(1)}
-        
-        # 关键词匹配："拉美"、"女性"等
-        keywords = ['拉美', '女性', '现代主义', '美国', '诗歌', '四种', '立场', '美学']
-        for kw in keywords:
-            if kw in q:
-                return {'cmd': 'story-path', 'key': kw}
-        
-        return {'cmd': 'story-path_list'}
-    
-    # === author / 作家详情 ===
-    if any(kw in q for kw in ['详情', '详细信息', '所有关系', '连接数', '入边', '出边']):
-        # 提取作家名
-        for prefix in ['查询', '查一下', '看看', '关于', '作家', '详情']:
-            if prefix in q:
-                name = q.replace(prefix, '').strip('吗？?的')
-                if name:
-                    return {'cmd': 'author', 'name': name, 'limit': 20}
-    
-    # === interview-status / 访谈状态 ===
-    if any(kw in q for kw in ['访谈', '采访', '巴黎评论', '中文版', '收录了吗']):
-        # 使用正则模式提取作家名，避免 prefix replace 错误
-        # 模式 1：X 被《巴黎评论》访谈过/采访过
-        m = re.search(r'(.+?)被(《巴黎评论》|巴黎评论|收录|访谈|采访)', q)
-        if m:
-            return {'cmd': 'interview-status', 'name': m.group(1).strip()}
-        # 模式 2：X 访谈过没有/被访谈过没有
-        m = re.search(r'(.+?)(被|访谈)过(没|了)', q)
-        if m:
-            return {'cmd': 'interview-status', 'name': m.group(1).strip()}
-        # 模式 3：X 有没有中文版
-        m = re.search(r'(.+?)有没有(中文版|被访谈|被收录)', q)
-        if m:
-            return {'cmd': 'interview-status', 'name': m.group(1).strip()}
-        # 模式 4：查一下/查 X 的访谈状态
-        m = re.search(r'(?:查一下|查|看看)\s*(.+?)的?(?:访谈状态|被访谈|被收录|访谈过)', q)
-        if m:
-            return {'cmd': 'interview-status', 'name': m.group(1).strip()}
-        # 模式 5：X 被访谈过吗
-        m = re.search(r'(.+?)被访谈过(吗|没|了)', q)
-        if m:
-            return {'cmd': 'interview-status', 'name': m.group(1).strip()}
-        # 模式 6：《巴黎评论》访谈过 X 吗
-        m = re.search(r'(《巴黎评论》|巴黎评论|该采访|访谈)过(.{2,20})吗', q)
-        if m:
-            return {'cmd': 'interview-status', 'name': m.group(2).strip()}
-        # 最后退路：去掉所有修饰词
-        name = re.sub(r'[？?吗。]', '', q)
-        for kw in ['访谈状态', '被访谈过', '访谈过', '有没有中文版', '有没有', '查一下', '查', '看看', '被', '《巴黎评论》', '巴黎评论', '访谈']:
-            name = name.replace(kw, '')
-        name = name.strip()
-        if name:
-            return {'cmd': 'interview-status', 'name': name}
-    
-    # === stats / 统计 ===
-    if any(kw in q for kw in ['统计', '多少作家', '总共有', '数据概况', '多少边', '多少节点']):
-        return {'cmd': 'stats'}
-    
-    # === 默认：搜索作家 ===
+    # 默认：搜索作家
     return {'cmd': 'search', 'name': q.strip('？?吗 ')}
 
+
+# ============================================================
+# 结果格式化
+# ============================================================
 
 def format_result(cmd: str, result: dict) -> str:
     """把 JSON 结果转换为人类可读的中文回答。"""
@@ -181,15 +264,34 @@ def format_result(cmd: str, result: dict) -> str:
         has_cn = result.get('has_chinese_interview', False)
         node = result.get('node')
         catalog_info = result.get('catalog_info') or result.get('catalog_record')
+        interview_count = result.get('interview_count', 0)
+        all_interviews = result.get('all_interviews', [])
         
         lines = [f"「{result['resolved_name']}」访谈状态"]
         lines.append("")
         
         if has_cn:
-            lines.append(f"✅ 已收录中文版：《{result.get('chinese_book', 'N/A')}》")
-            lines.append(f"   译者：{result.get('translator', 'N/A')}")
-            lines.append(f"   采访者：{result.get('interviewer', 'N/A')}")
-            lines.append(f"   年份：{result.get('year', 'N/A')}")
+            if interview_count > 1:
+                lines.append(f"✅ 已收录中文版（共 {interview_count} 篇）：")
+            else:
+                lines.append(f"✅ 已收录中文版：《{result.get('chinese_book', 'N/A')}》")
+            
+            if all_interviews:
+                for i, iv in enumerate(all_interviews):
+                    book = iv.get('book', 'N/A')
+                    translator = iv.get('translator', 'N/A')
+                    interviewer = iv.get('interviewer', 'N/A')
+                    year = iv.get('year', 'N/A')
+                    if interview_count > 1:
+                        lines.append(f"   [{i+1}] 《{book}》— 译者：{translator}，采访者：{interviewer}，年份：{year}")
+                    else:
+                        lines.append(f"   译者：{translator}")
+                        lines.append(f"   采访者：{interviewer}")
+                        lines.append(f"   年份：{year}")
+            else:
+                lines.append(f"   译者：{result.get('translator', 'N/A')}")
+                lines.append(f"   采访者：{result.get('interviewer', 'N/A')}")
+                lines.append(f"   年份：{result.get('year', 'N/A')}")
         elif catalog_info:
             lines.append("✅ 被《巴黎评论》访谈过（英文版）")
             lines.append(f"   期号：{catalog_info.get('number', 'N/A')}")
@@ -226,14 +328,16 @@ def format_result(cmd: str, result: dict) -> str:
             lines.append("📥 被谁提及（前5条）：")
             for e in result['incoming_edges'][:5]:
                 type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e['type'], e['type'])
-                lines.append(f"  {e['source']} → {type_label}")
+                infl_label = ' ⚡影响' if e.get('influence') else ''
+                lines.append(f"  {e['source']} → {type_label}{infl_label}")
         
         if result.get('outgoing_edges'):
             lines.append("")
             lines.append("📤 提及了谁（前5条）：")
             for e in result['outgoing_edges'][:5]:
                 type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e['type'], e['type'])
-                lines.append(f"  → {e['target']} ({type_label})")
+                infl_label = ' ⚡影响' if e.get('influence') else ''
+                lines.append(f"  → {e['target']} ({type_label}{infl_label})")
         
         return "\n".join(lines)
     
@@ -270,8 +374,15 @@ def format_result(cmd: str, result: dict) -> str:
             infl_label = ' ⚡影响关系' if e.get('influence') else ''
             lines.append(f"  {e['source']} → {e['target']} ({type_label}{infl_label})")
             if e.get('reason'):
-                reason = e['reason'].split(' | ')[0] if ' | ' in e['reason'] else e['reason']
-                lines.append(f"    原文：{reason[:80]}{'…' if len(reason) > 80 else ''}")
+                # 显示完整 reason，不再截断
+                reason = e['reason']
+                # 如果有多段证据（用 | 分隔），逐段展示
+                if ' | ' in reason:
+                    parts = reason.split(' | ')
+                    for i, part in enumerate(parts):
+                        lines.append(f"    证据{i+1}：{part}")
+                else:
+                    lines.append(f"    原文：{reason}")
         
         return "\n".join(lines)
     
@@ -282,7 +393,7 @@ def format_result(cmd: str, result: dict) -> str:
         lines = [f"👥 社群 #{result['community_id']}（共 {result['size']} 位成员）"]
         lines.append("")
         
-        for m in result['members'][:15]:  # 只显示前15个
+        for m in result['members'][:15]:
             art_label = f" [{m['art_category']}]" if m['art_category'] else ''
             lines.append(f"  {m['id']} — {m['degree']} 连接{art_label}")
         
@@ -353,7 +464,6 @@ def main():
     
     # 执行命令
     if cmd == '_author_first_then_community':
-        # 先查作家，再查他的社群
         author_result = unified_search(data, cmd_info['question'])
         if author_result.get('matched_node'):
             comm_id = author_result['matched_node'].get('community_id')
@@ -395,7 +505,6 @@ def main():
             if update_msg:
                 print(update_msg)
         except Exception:
-            # 自动检查失败静默：不影响主流程
             pass
 
 

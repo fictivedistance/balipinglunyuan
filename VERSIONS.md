@@ -12,6 +12,37 @@
 
 ---
 
+## v1.3.0 (2026-07-03)
+
+### 重构 + Bug 修复 + 体验优化
+
+**重构：**
+- `detect_command` 拆分为 7 个独立检测函数（`_detect_leaderboard` / `_detect_edge` / `_detect_community` / `_detect_story_path` / `_detect_author` / `_detect_interview_status` / `_detect_stats`），提升可维护性
+- story-path 关键词改为动态匹配（从数据标题提取，不再硬编码关键词列表）
+- 清理 `paris_network_query.py` 中的死代码（`return n` 后的 `break`）
+
+**Bug 修复：**
+- 修复作家详情查询名字提取 bug："查一下博尔赫斯的详情" 现在能正确提取"博尔赫斯"（之前提取成"博尔赫斯的"导致查询失败）
+- 修复 edge 查询正则贪婪匹配："海明威对福克纳的评价" 不再把"的评价"残留到名字里
+- 修复 `build_data.py` 绝对路径泄露问题（`source_html` 字段写入本地绝对路径，改为相对路径）
+- 修复 README License badge 错误（Apache-2.0 → MIT）
+- 修复 SKILL.md 里旧路径引用（`skills/paris-network/` → `skills/巴黎评论员/`）
+
+**功能优化：**
+- interview-status 支持展示全部中文版访谈（多篇时逐条列出书名/译者/采访者/年份）
+- edge 查询的 reason 字段完整展示（不再截断为 80 字，多段证据用 `|` 分隔时逐条展示）
+- leaderboard 扩展关键词匹配（"最伟大""最牛""最受欢迎""喜爱""讨厌""反感""赞赏"等）
+- author 详情输出增加影响关系标记（⚡）
+
+**文档修复：**
+- INSTALL.md 去硬编码版本号（`v1.2.2` → `<latest-tag>`）+ 清理重复段落（卸载/升级段各出现两次）
+- 更新 `data-contract.md` 过时路径（`v283.html` → `v13_public.html`，移除已不存在的 JSON catalog 路径）
+- SKILL.md frontmatter description 去掉过时的 "v283 RC"
+- README "数据版本" 从 "v283 RC" 改为 "v13（截至 2026 年 6 月）"
+- `skill.yaml` 版本号从 `1.0.0` 更新为 `1.3.0`
+
+---
+
 ## v1.2.2 (2026-06-30)
 
 ### Bug 修复：目录作家链接 Markdown 化 + 验证脚本数据硬编码改为范围检查

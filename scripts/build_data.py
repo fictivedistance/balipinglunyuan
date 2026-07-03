@@ -180,7 +180,7 @@ def main():
     # Build bundle
     bundle = {
         'version': 'v13-skill-v1-pseudo-b2',
-        'source_html': str(html_path),
+        'source_html': 'projects/paris_network/v13_public.html',
         'counts': {
             'nodes': len(graph.get('nodes', [])),
             'links': len(graph.get('links', [])),

@@ -74,7 +74,6 @@ def find_node_in_graph(data, keyword, search_keyword):
             for n in graph['nodes']:
                 if n.get('id') == zh_name:
                     return n
-                    break
     
     # Step 2: Chinese input -> reverse lookup
     if has_cjk(search_keyword):
@@ -95,7 +94,6 @@ def find_node_in_graph(data, keyword, search_keyword):
                 for n in graph['nodes']:
                     if n.get('id') == zh:
                         return n
-                        break
     
     # Step 3: Direct node filter (case-insensitive substring match)
     keyword_lower = final_search_keyword.lower()
@@ -334,11 +332,8 @@ def get_interview_status(data, writer_name):
         year = first.get('year')
     
     # Catalog info (from catalog records)
-    # First take whatever unified_search already found (covers both in-graph and catalog-only cases)
     catalog_info = result.get('catalog_record')
-    # If not found yet and writer is in graph, also try resolving by Chinese name
     if not catalog_info and result['is_in_graph'] and result['matched_node']:
-        # Get catalog info via the resolved Chinese name
         resolved = result['resolved_name']
         for rec in data['catalog']['records']:
             if rec.get('name_zh') == resolved:
@@ -356,6 +351,7 @@ def get_interview_status(data, writer_name):
         'translator': translator,
         'interviewer': interviewer,
         'year': year,
+        'all_interviews': chinese_interviews,
         'catalog_info': catalog_info,
     }
 

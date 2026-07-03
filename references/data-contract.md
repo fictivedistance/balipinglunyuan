@@ -2,49 +2,38 @@
 
 ## Source
 
-- Graph source: `projects/paris_network/v283.html`
+- Graph source: `projects/paris_network/v13_public.html`
 - Extracted JS constants:
   - `GRAPH`
   - `LEADERBOARD_BUBBLES`
   - `STORY_PATHS_V1`
-- Interview source: `~/.openclaw/openclaw_data/workspace/paris_review.db`, table `interviews`
-- English catalog source: `projects/paris_network/catalog/paris_review_interview_catalog_v246.json`, derived from `巴黎评论_作家访谈全目录_20260114更新版.xlsx / sheet=全目录`
+  - `authorInfo`
+- Interview info: extracted from `authorInfo` in the same HTML (Chinese published interviews)
+- English catalog source: `PARIS_REVIEW_CATALOG` records embedded in the same HTML
 
-## Counts expected for v283 RC
+## Counts expected for v13 (skill v1.3.0)
 
 - nodes: 719
 - links: 2798
 - leaderboard boards: 8
 - story paths: 8
-- interview records: 253
 - catalog records: 454
+- authors with Chinese interview: 191
 
 ## Interview status fields
 
 `interview-status <writer>` returns:
 
-- `found_in_network`: writer exists as v283 graph node
-- `network_node`: canonical node name
-- `network_sub_unit`: v283 node art-category label, e.g. 小说的艺术 / 诗歌的艺术 / 非虚构的艺术
-- `catalog_matches`: matched rows from the total catalog
-- `original_series`: e.g. The Art of Fiction
-- `original_series_number`: e.g. No. 17
-- `original_title`: e.g. Truman Capote, The Art of Fiction No. 17
-- `interviewed_by_paris_review`: local interview record exists
-- `interviews[]`:
-  - `magazine_issue`: parsed from original note, e.g. 第十六期，一九五七年春/夏季号
-  - `magazine_season_unit`: parsed seasonal issue, e.g. 一九五七年春/夏季号
-  - `network_sub_unit`
-  - `has_chinese`
-  - `chinese_book`
-  - `translator`
-  - `interviewer`
-  - `year`
-  - `source_record_id`
-
-## Note
-
-The local DB alone does not store exact English series numbers, but the project catalog does. V1 joins both: Chinese book/translator from `paris_review.db`, original series number from `paris_review_interview_catalog_v246.json`.
+- `is_in_graph`: writer exists as graph node
+- `node`: canonical node (with degree, community_id, etc.)
+- `has_chinese_interview`: bool
+- `interview_count`: number of Chinese interview records
+- `all_interviews`: full list of Chinese interview records
+- `chinese_book`: first interview's book name
+- `translator`: first interview's translator
+- `interviewer`: first interview's interviewer
+- `year`: first interview's year
+- `catalog_info`: matched catalog record (English series, issue, URL)
 
 ## English-name query regression
 

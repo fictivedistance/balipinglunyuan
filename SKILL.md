@@ -1,6 +1,6 @@
 ---
 name: 巴黎评论员
-description: "查询《巴黎评论》作家关系网 v283 RC：作家节点、关系边、排行榜、故事路径、社群、访谈元数据。"
+description: "查询《巴黎评论》作家关系网：作家节点、关系边、排行榜、故事路径、社群、访谈元数据。"
 ---
 
 # 巴黎评论员
@@ -165,7 +165,7 @@ python3 skills/巴黎评论员/scripts/paris_network_query.py interview-status "
 
 ```bash
 # 1. 查询作家的访谈状态
-python3 skills/paris-network/scripts/paris_network_query.py interview-status "<作家名>"
+python3 skills/巴黎评论员/scripts/paris_network_query.py interview-status "<作家名>"
 
 # 2. 根据返回结果判断状态：
 #    - is_in_author_info=True -> 状态 A1 (有中文版收录，不一定在 catalog)

@@ -1,6 +1,6 @@
 name: 巴黎评论员
 display_name: Paris Review Analyst · 巴黎评论员
-version: 1.0.0
+version: 1.3.0
 description: |
   《巴黎评论》作家关系网智能查询技能。基于简体中文版《巴黎评论》系列的
   作家关系知识图谱，支持自然语言查询访谈状态、作家关系、排行榜、社群、

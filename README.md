@@ -1,7 +1,7 @@
 # 巴黎评论员
 
 [![Latest Version](https://img.shields.io/github/v/tag/fictivedistance/balipinglunyuan?label=version&sort=semver)](https://github.com/fictivedistance/balipinglunyuan/tags)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
 > 《巴黎评论》作家关系网络查询技能
 
@@ -43,7 +43,7 @@
 ## 安装
 
 > **⚠️ 重要：请按指定版本安装，不要使用 `git clone` 默认拉取 main 分支。**
-> 默认拉取的是 main 分支最新代码，**不是**最新 tag。推荐明确指定 tag 版本号（如 `v1.2.2`）以避免装到老版本。
+> 默认拉取的是 main 分支最新代码，**不是**最新 tag。推荐明确指定 tag 版本号（如 `v1.3.0`）以避免装到老版本。
 >
 > **最新版本：** https://github.com/fictivedistance/balipinglunyuan/tags
 
@@ -53,18 +53,18 @@
 
 ```
 帮我装这个技能：https://github.com/fictivedistance/balipinglunyuan
-并安装到 v1.2.2 tag 版本
+并安装到最新 tag 版本
 ```
 
-Agent 会自动拉取 v1.2.2 tag、安装、验证。
+Agent 会自动拉取最新 tag、安装、验证。
 
-> 💡 **给 Agent 的补充提示**：“使用 git clone --branch v1.2.2 --depth 1”或“检出 v1.2.2 标签”。
+> 💡 **给 Agent 的补充提示**：“使用 git clone --branch <latest-tag> --depth 1”或“检出最新标签”。
 
 ### 手动安装
 
 ```bash
 # ⚠️ 关键：使用 --branch 指定 tag，不要省略
-git clone --branch v1.2.2 --depth 1 https://github.com/fictivedistance/balipinglunyuan.git
+git clone --branch <latest-tag> --depth 1 https://github.com/fictivedistance/balipinglunyuan.git
 
 # 复制到 OpenClaw skills 目录
 cp -r balipinglunyuan ~/.openclaw/workspace/skills/巴黎评论员
@@ -76,7 +76,7 @@ python3 ~/.openclaw/workspace/skills/巴黎评论员/scripts/validate_skill_v1.p
 ### 独立使用
 
 ```bash
-git clone --branch v1.2.2 --depth 1 https://github.com/fictivedistance/balipinglunyuan.git
+git clone --branch <latest-tag> --depth 1 https://github.com/fictivedistance/balipinglunyuan.git
 cd balipinglunyuan
 python3 scripts/nl_interface.py "海明威和福克纳有什么关系"
 ```
@@ -86,7 +86,7 @@ python3 scripts/nl_interface.py "海明威和福克纳有什么关系"
 如果你的环境不支持 git，可以下载指定版本的 ZIP：
 
 ```
-https://github.com/fictivedistance/balipinglunyuan/archive/refs/tags/v1.2.2.zip
+https://github.com/fictivedistance/balipinglunyuan/archive/refs/tags/<latest-tag>.zip
 ```
 
 下载后解压，将文件夹重命名为 `巴黎评论员`，移动到 `~/.openclaw/workspace/skills/`。
@@ -97,10 +97,12 @@ https://github.com/fictivedistance/balipinglunyuan/archive/refs/tags/v1.2.2.zip
 
 ```bash
 cd ~/.openclaw/workspace/skills/巴黎评论员
-git pull origin v1.2.2
+git checkout <latest-tag>
 git fetch --tags
 ```
 
+> ⚠️ 使用 `git checkout <latest-tag>` 而不是 `git pull origin main`，以免拉取到未发布版本。
+>
 > 从 v1.2.0 起，Skill 在主流程中会自动检查更新（每日一次），你会在使用过程中看到升级提示。
 > 也可以手动检查：`python3 scripts/nl_interface.py --check-update`
 
@@ -265,6 +267,22 @@ python3 scripts/validate_skill_v1.py
 
 ## 更新日志
 
+### v1.3.0 (2026-07-03)
+- 重构 `detect_command`：拆分为独立函数，提升可维护性
+- 修复作家详情查询名字提取 bug（"查一下博尔赫斯的详情" 现在能正确提取"博尔赫斯"）
+- 修复 edge 查询正则贪婪匹配（"海明威对福克纳的评价" 不再把"的评价"残留）
+- interview-status 支持展示全部中文版访谈（多篇时逐条列出）
+- edge 查询的 reason 字段完整展示（不再截断，多段证据逐条展示）
+- leaderboard 扩展关键词匹配（"最伟大""最牛""最受欢迎""喜爱""讨厌"等）
+- story-path 关键词改为动态匹配（从数据标题提取，不再硬编码）
+- 修复 README License badge（Apache-2.0 → MIT）
+- 修复 SKILL.md 里旧路径引用（paris-network → 巴黎评论员）
+- 修复 build_data.py 绝对路径泄露问题
+- INSTALL.md 去硬编码版本号 + 清理重复段落
+- 更新 data-contract.md 过时路径
+- skill.yaml 版本号同步更新
+- 清理死代码（return 后的 break）
+
 ### v1.2.2 (2026-06-30)
 - 访谈状态查询中的作家链接改为 Markdown 格式，飞书/webchat 端可点击跳转原文
 
@@ -310,4 +328,4 @@ python3 scripts/validate_skill_v1.py
 
 **发布日期**：2026-06-29
 
-**数据版本**：v283 RC
+**数据版本**：v13（截至 2026 年 6 月）
