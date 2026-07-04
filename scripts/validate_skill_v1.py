@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 简体中文版《巴黎评论》系列编辑部
 """Validation for skill v1 data + search logic parity with frontend.
 
 This validates:

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 简体中文版《巴黎评论》系列编辑部
 """Read-only queries for Paris Network - 100% aligned with frontend search logic.
 
 This module replicates the JavaScript search behavior from the public HTML page:

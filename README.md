@@ -1,11 +1,33 @@
 # 巴黎评论员
 
 [![Latest Version](https://img.shields.io/github/v/tag/fictivedistance/balipinglunyuan?label=version&sort=semver)](https://github.com/fictivedistance/balipinglunyuan/tags)
-[![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+[![Code License: AGPL-3.0-or-later](https://img.shields.io/badge/code%20license-AGPL--3.0--or--later-blue)](./LICENSE)
+[![Data License: CC BY-NC-SA 4.0 + AI Restricted](https://img.shields.io/badge/data%20license-CC%20BY--NC--SA%204.0%20%2B%20AI%20Restricted-orange)](./LICENSE.data)
+[![AI Training: Prohibited](https://img.shields.io/badge/AI%20training-prohibited-red)](./LICENSE.data)
 
 > 《巴黎评论》作家关系网络查询技能
 
 一个供AI agent使用的《巴黎评论》skill，基于简体中文版《巴黎评论》系列作家关系网络图谱创建，支持《巴黎评论》系列读者用自然语言查询访谈状态、作家关系、排行榜等。
+
+---
+
+## 📜 协议与使用限制
+
+本项目采用**双协议**结构：
+
+| 部分 | 协议 | 适用文件 |
+|------|------|---------|
+| **代码** | [AGPL-3.0-or-later](./LICENSE) | `scripts/`、`references/`、所有 `.py` 源文件 |
+| **数据** | [CC BY-NC-SA 4.0 + AI 训练禁止条款](./LICENSE.data) | `data/` 目录下所有 JSON/CSV/结构化数据 |
+
+**关键限制：**
+- ❌ **禁止商用** — 代码与数据均禁止任何形式的商业用途
+- ❌ **禁止批量训练 / 对外服务** — 数据不得用于系统性训练、微调、对第三方提供 RAG / 嵌入服务。详细豁免见 [LICENSE.data 第 2.0 条](./LICENSE.data)
+- ✅ **Agent 正常使用豁免** — AI Agent 通过官方接口查询作家、访谈、关系、社群信息不在禁止范围；本技能即为该用途而设计
+- ✅ **必须署名** — 必须明确标注"简体中文版《巴黎评论》系列编辑部"
+- ✅ **衍生必须同样协议** — 衍生作品必须以相同协议发布
+
+详见 [LICENSE](./LICENSE)、[LICENSE.data](./LICENSE.data) 和 [NOTICE](./NOTICE)。
 
 ---
 

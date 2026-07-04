@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 简体中文版《巴黎评论》系列编辑部
 """
 巴黎评论员技能 - 自然语言接口
 把用户的自然语言提问映射到对应的查询命令，并把 JSON 结果转换为人类可读的回答。
