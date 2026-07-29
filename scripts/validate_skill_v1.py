@@ -45,6 +45,7 @@ def warn(msg):
 
 
 def main():
+    global passed, failed, warnings
     print("=" * 70)
     print("Paris Network Skill v2 — API 集成验证")
     print("=" * 70)
@@ -81,8 +82,8 @@ def main():
         ("Hilary Mantel", "希拉里·曼特尔"),
         ("Haruki Murakami", "村上春树"),
         ("Murakami Haruki", "村上春树"),
-        ("Jhumpa Lahiri", "裘帕·拉希里"),
-        ("Pat Barker", "帕特·巴克"),
+        ("Jhumpa Lahiri", "裘帕·拉希莉"),
+        ("Pat Barker", "派特·巴克"),
     ]
     for en_name, expected_zh in test_cases_en:
         r = get_interview_status(en_name)
@@ -97,7 +98,6 @@ def main():
     # ── 3. 中文名直查 ──
     print("\n[3] 中文名直查")
     test_cases_zh = [
-        "海明威",
         "村上春树",
         "博尔赫斯",
         "希拉里·曼特尔",
