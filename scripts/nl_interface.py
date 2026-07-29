@@ -2,19 +2,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 简体中文版《巴黎评论》系列编辑部
 """
-巴黎评论员技能 - 自然语言接口
-把用户的自然语言提问映射到对应的查询命令，并把 JSON 结果转换为人类可读的回答。
+巴黎评论员技能 - 自然语言接口（API 模式）
+把用户的自然语言提问映射到对应的 API 查询，并把 JSON 结果转换为人类可读的回答。
 """
 from __future__ import annotations
 import argparse, json, re, sys
 from pathlib import Path
 
-# 导入查询模块
+# 导入 API 客户端模块
 sys.path.insert(0, str(Path(__file__).parent))
 from paris_network_query import (
-    DATA, unified_search, get_interview_status, query_author,
+    get_interview_status, query_author,
     get_leaderboard, query_edge, get_community, get_story_path,
-    normalize_name_key
+    get_stats, get_version, normalize_name_key,
+    api_get
 )
 
 
@@ -57,7 +58,6 @@ def _detect_leaderboard(q: str) -> dict | None:
 
 def _extract_two_names(q: str) -> tuple[str, str] | None:
     """从关系查询中提取两个作家名"""
-    # 清理问题后缀
     q_clean = q
     for suffix in ['有什么关系', '的关系', '有联系吗', '有关系吗', '有关系', '有联系',
                    '怎么看', '如何看', '的看法', '怎么评价', '如何评价',
@@ -66,13 +66,11 @@ def _extract_two_names(q: str) -> tuple[str, str] | None:
             q_clean = q_clean[:-len(suffix)]
             break
     
-    # 尝试多种分隔符
     for sep in ['和', '与', '跟', '对']:
         if sep in q_clean:
             parts = q_clean.split(sep, 1)
             name1 = parts[0].strip()
             name2 = parts[1].strip()
-            # 清理 name2 开头可能残留的"的"
             name2 = name2.lstrip('的').strip()
             if name1 and name2 and len(name1) > 1 and len(name2) > 1:
                 return (name1, name2)
@@ -118,22 +116,7 @@ def _detect_story_path(q: str) -> dict | None:
     if key_match:
         return {'cmd': 'story-path', 'key': key_match.group(1)}
     
-    # 动态关键词匹配：从数据中提取所有 story path 标题的关键词
-    try:
-        data = json.loads(DATA.read_text())
-        paths = data.get('story_paths', {}).get('paths', [])
-        for p in paths:
-            title = p.get('title', '')
-            # 取标题中 2 字以上的关键词进行匹配
-            for kw_len in range(len(title), 1, -1):
-                for start in range(len(title) - kw_len + 1):
-                    fragment = title[start:start + kw_len]
-                    if fragment in q and len(fragment) >= 2:
-                        return {'cmd': 'story-path', 'key': fragment}
-    except Exception:
-        pass
-    
-    # 静态退路
+    # 静态退路关键词
     for kw in ['拉美', '女性', '现代主义', '美国', '诗歌', '四种', '立场', '美学',
                '乔伊斯', '卡夫卡', '庞德', '福克纳', '詹姆斯', '阅读']:
         if kw in q:
@@ -148,7 +131,6 @@ def _detect_author(q: str) -> dict | None:
                                    '的关系网', '关系图谱', '哪些作家提到']):
         return None
     
-    # 提取作家名：去掉触发词和常见前缀
     name = q
     for trigger in ['的详细信息', '的详情', '详情', '详细信息', '的所有关系', '所有关系',
                     '的连接数', '连接数', '的入边', '入边', '的出边', '出边',
@@ -234,38 +216,42 @@ def detect_command(question: str) -> dict:
 def format_result(cmd: str, result: dict) -> str:
     """把 JSON 结果转换为人类可读的中文回答。"""
     
+    if not result.get('ok', True) and result.get('error'):
+        return f"❌ 查询失败：{result.get('error', '未知错误')}\n\n{result.get('hint', '')}"
+    
     if cmd == 'stats':
+        stats = result.get('stats', result)
         return f"""📊 巴黎评论作家关系网统计
 
-- 总作家数：{result['nodes']} 位
-- 总关系边数：{result['links']} 条
-- 访谈目录收录：{result['catalog_records']} 位
-- 中文版已收录：{result['authors_with_chinese_interview']} 位"""
+- 总作家数：{stats.get('nodes', 'N/A')} 位
+- 总关系边数：{stats.get('links', 'N/A')} 条
+- 访谈目录收录：{stats.get('catalog_records', 'N/A')} 位
+- 中文版已收录：{stats.get('authors_with_chinese_interview', 'N/A')} 位"""
     
     elif cmd == 'search':
-        if result.get('matched_node'):
-            node = result['matched_node']
-            return f"""🔍 搜索结果：找到「{node['id']}」
+        # API 的 interview-status 返回既包含图谱也包含访谈信息，用于搜索展示
+        node = result.get('node')
+        catalog_info = result.get('catalog_info')
+        
+        if node:
+            return f"""🔍 搜索结果：找到「{result['resolved_name']}」
 
-- 身份：{node['group']}
+- 身份：{node.get('group', 'N/A')}
 - 总连接数：{node.get('degree', 0)}
 - 社群：#{node.get('community_id', 0)}（排名 {node.get('community_rank', 'N/A')}）
 - 艺术分类：{node.get('art_category_label', '未分类')}"""
-        elif result.get('catalog_record'):
-            cat = result['catalog_record']
-            return f"""📚 搜索结果：不在图谱中，但在访谈目录中找到「{cat.get('name_zh') or cat.get('name_en')}」
+        elif catalog_info:
+            return f"""📚 搜索结果：不在图谱中，但在访谈目录中找到「{catalog_info.get('name_zh') or catalog_info.get('name_en')}」
 
-- 访谈系列：{cat.get('series', 'N/A')}
-- 出版年份：{cat.get('year', 'N/A')}"""
+- 访谈系列：{catalog_info.get('series', 'N/A')}
+- 出版年份：{catalog_info.get('year', 'N/A')}"""
         else:
-            return f"""❌ 未找到「{result.get('search_keyword')}」
-
-该作家既不在关系图谱中，也不在《巴黎评论》访谈目录里。"""
+            return f"❌ 未找到「{result.get('query', result.get('resolved_name', ''))}」\n\n该作家既不在关系图谱中，也不在《巴黎评论》访谈目录里。"
     
     elif cmd == 'interview-status':
         has_cn = result.get('has_chinese_interview', False)
         node = result.get('node')
-        catalog_info = result.get('catalog_info') or result.get('catalog_record')
+        catalog_info = result.get('catalog_info')
         interview_count = result.get('interview_count', 0)
         all_interviews = result.get('all_interviews', [])
         
@@ -317,53 +303,68 @@ def format_result(cmd: str, result: dict) -> str:
         return "\n".join(lines)
     
     elif cmd == 'author':
-        if not result.get('found_in_network'):
-            return f"❌ 未找到「{result['query']}」"
+        if not result.get('found', result.get('found_in_network')):
+            return f"❌ 未找到「{result.get('query', '')}」"
         
-        lines = [f"👤 {result['resolved_chinese_name']} 详情"]
+        node = result.get('node', {})
+        resolved = result.get('resolved_name', node.get('id', ''))
+        in_count = result.get('in_degree_edges_count', len(result.get('in_edges', [])))
+        out_count = result.get('out_degree_edges_count', len(result.get('out_edges', [])))
+        
+        lines = [f"👤 {resolved} 详情"]
         lines.append("")
-        lines.append(f"- 入边（被提及）：{result['in_degree_edges_count']} 条")
-        lines.append(f"- 出边（提及他人）：{result['out_degree_edges_count']} 条")
+        lines.append(f"- 入边（被提及）：{in_count} 条")
+        lines.append(f"- 出边（提及他人）：{out_count} 条")
         lines.append("")
         
-        if result.get('incoming_edges'):
+        in_edges = result.get('in_edges', [])
+        out_edges = result.get('out_edges', [])
+        
+        if in_edges:
             lines.append("📥 被谁提及（前5条）：")
-            for e in result['incoming_edges'][:5]:
-                type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e['type'], e['type'])
+            for e in in_edges[:5]:
+                type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e.get('type', ''), e.get('type', ''))
                 infl_label = ' ⚡影响' if e.get('influence') else ''
-                lines.append(f"  {e['source']} → {type_label}{infl_label}")
+                lines.append(f"  {e.get('source', 'N/A')} → {type_label}{infl_label}")
         
-        if result.get('outgoing_edges'):
+        if out_edges:
             lines.append("")
             lines.append("📤 提及了谁（前5条）：")
-            for e in result['outgoing_edges'][:5]:
-                type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e['type'], e['type'])
+            for e in out_edges[:5]:
+                type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e.get('type', ''), e.get('type', ''))
                 infl_label = ' ⚡影响' if e.get('influence') else ''
-                lines.append(f"  → {e['target']} ({type_label}{infl_label})")
+                lines.append(f"  → {e.get('target', 'N/A')} ({type_label}{infl_label})")
         
         return "\n".join(lines)
     
     elif cmd == 'leaderboard':
+        entries = result.get('entries', result.get('leaderboard', []))
+        sort_by = result.get('sort_by', 'degree')
+        
         sort_names = {
             'degree': '总连接数', 'inDegree': '被提及数', 'outDegree': '提及他人数',
             'pageRank': '影响力', 'betweenness': '中介中心性',
             'positiveIn': '正面评价数', 'negativeIn': '负面评价数', 'influenceIn': '影响关系数'
         }
         
-        lines = [f"🏆 作家排行榜（按 {sort_names.get(result['sort_by'], result['sort_by'])} 排序，Top {result['top_n']}）"]
+        lines = [f"🏆 作家排行榜（按 {sort_names.get(sort_by, sort_by)} 排序）"]
         lines.append("")
         
-        for item in result['leaderboard']:
-            group_label = {'interviewee': '🎤受访', 'mentioned': '📝提及', 'both': '✨两者'}.get(item['group'], item['group'])
-            lines.append(f"  {item['rank']}. {item['id']} — {item['degree']} 连接 {group_label} 社群#{item['community_id']}")
+        for item in entries:
+            rank = item.get('rank', '')
+            wid = item.get('id', 'N/A')
+            deg = item.get('degree', 0)
+            group_label = {'interviewee': '🎤受访', 'mentioned': '📝提及', 'both': '✨两者'}.get(item.get('group', ''), item.get('group', ''))
+            comm = item.get('community_id', '')
+            lines.append(f"  {rank}. {wid} — {deg} 连接 {group_label} 社群#{comm}")
         
         return "\n".join(lines)
     
     elif cmd == 'edge':
-        if not result['has_direct_edge']:
-            found1, found2 = result['found_in_network']
+        if not result.get('has_direct_edge'):
+            found = result.get('found_in_network', [False, False])
             msg = f"❌ 「{result['resolved_names'][0]}」和「{result['resolved_names'][1]}」之间没有直接联系"
-            if not found1 or not found2:
+            if not all(found):
                 msg += "\n   （其中一位作家不在图谱中）"
             return msg
         
@@ -371,14 +372,13 @@ def format_result(cmd: str, result: dict) -> str:
         lines.append(f"   共 {result['edge_count']} 条直接边")
         lines.append("")
         
-        for e in result['edges']:
-            type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e['type'], e['type'])
+        edges = result.get('edges', [])
+        for e in edges:
+            type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e.get('type', ''), e.get('type', ''))
             infl_label = ' ⚡影响关系' if e.get('influence') else ''
-            lines.append(f"  {e['source']} → {e['target']} ({type_label}{infl_label})")
+            lines.append(f"  {e.get('source', 'N/A')} → {e.get('target', 'N/A')} ({type_label}{infl_label})")
             if e.get('reason'):
-                # 显示完整 reason，不再截断
                 reason = e['reason']
-                # 如果有多段证据（用 | 分隔），逐段展示
                 if ' | ' in reason:
                     parts = reason.split(' | ')
                     for i, part in enumerate(parts):
@@ -386,48 +386,64 @@ def format_result(cmd: str, result: dict) -> str:
                 else:
                     lines.append(f"    原文：{reason}")
         
+        # 反向边
+        if result.get('reverse_edge_count', 0) > 0:
+            lines.append("")
+            lines.append(f"   反向边（{result['resolved_names'][1]} → {result['resolved_names'][0]}）：{result['reverse_edge_count']} 条")
+            for e in result.get('reverse_edges', []):
+                type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e.get('type', ''), e.get('type', ''))
+                lines.append(f"  {e.get('source', 'N/A')} → {e.get('target', 'N/A')} ({type_label})")
+                if e.get('reason'):
+                    lines.append(f"    原文：{e['reason']}")
+        
         return "\n".join(lines)
     
     elif cmd == 'community':
-        if not result['found']:
-            return f"❌ 未找到社群 #{result.get('community_id')}\n\n共有 {result['total_communities']} 个社群"
+        if not result.get('found', result.get('ok', True)):
+            return f"❌ 未找到社群 #{result.get('community_id', '')}\n\n共有 {result.get('total_communities', '?')} 个社群"
         
-        lines = [f"👥 社群 #{result['community_id']}（共 {result['size']} 位成员）"]
+        members = result.get('members', [])
+        lines = [f"👥 社群 #{result.get('community_id', '')}（共 {result.get('member_count', len(members))} 位成员）"]
+        if result.get('community_name'):
+            lines[0] += f" — {result['community_name']}"
         lines.append("")
         
-        for m in result['members'][:15]:
-            art_label = f" [{m['art_category']}]" if m['art_category'] else ''
-            lines.append(f"  {m['id']} — {m['degree']} 连接{art_label}")
+        for m in members[:15]:
+            art_label = f" [{m.get('art_category', '')}]" if m.get('art_category') else ''
+            lines.append(f"  {m.get('id', 'N/A')} — {m.get('degree', 0)} 连接{art_label}")
         
-        if len(result['members']) > 15:
-            lines.append(f"  ... 还有 {len(result['members']) - 15} 位")
+        if len(members) > 15:
+            lines.append(f"  ... 还有 {len(members) - 15} 位")
         
         return "\n".join(lines)
     
     elif cmd == 'story-path_list':
-        story_paths = json.loads(DATA.read_text()).get('story_paths', {}).get('paths', [])
-        lines = ["📚 可用的故事路径（共 {} 条）：\n".format(len(story_paths))]
-        for i, p in enumerate(story_paths):
-            lines.append(f"  {i}. {p.get('title', '未命名')}")
-        lines.append("\n使用方式：查询「第 0 条路径」或「拉美路径」")
+        # 需要调 API 获取路径列表——但 API 不提供列表接口
+        # 用 story-path key=0 作为兜底展示
+        lines = ["📚 故事路径查询"]
+        lines.append("")
+        lines.append("可用关键词：拉美、女性、现代主义、美国、诗歌、四种、立场、美学")
+        lines.append("使用方式：查询「第 0 条路径」或「拉美路径」")
         return "\n".join(lines)
     
     elif cmd == 'story-path':
-        if not result['found']:
-            return "❌ 未找到该路径\n\n" + "\n".join(result.get('available_paths', []))
+        if not result.get('found', result.get('ok', True)):
+            return "❌ 未找到该路径"
         
-        lines = [f"📖 {result['title']}"]
-        lines.append(f"   涉及 {result['node_count']} 位作家，{result['edge_count']} 条关系")
+        path = result.get('path', result)
+        lines = [f"📖 {path.get('title', '未命名')}"]
+        lines.append(f"   涉及 {path.get('node_count', len(path.get('nodes', [])))} 位作家，{path.get('edge_count', len(path.get('edges', [])))} 条关系")
         lines.append("")
         lines.append("👤 涉及作家：")
-        lines.append("   " + "、".join(result['nodes']))
+        lines.append("   " + "、".join(path.get('nodes', [])))
         
-        if result.get('edges'):
+        edges = path.get('edges', [])
+        if edges:
             lines.append("")
             lines.append("🔗 关键关系：")
-            for e in result['edges'][:5]:
-                type_label = {'positive': '👍', 'negative': '👎', 'neutral': '⚪'}.get(e['type'], '')
-                lines.append(f"   {type_label} {e['source']} → {e['target']}")
+            for e in edges[:5]:
+                type_label = {'positive': '👍', 'negative': '👎', 'neutral': '⚪'}.get(e.get('type', ''), '')
+                lines.append(f"   {type_label} {e.get('source', 'N/A')} → {e.get('target', 'N/A')}")
         
         return "\n".join(lines)
     
@@ -435,72 +451,79 @@ def format_result(cmd: str, result: dict) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='巴黎评论员 - 自然语言接口')
+    parser = argparse.ArgumentParser(description='巴黎评论员 - 自然语言接口（API 模式）')
     parser.add_argument('question', nargs='*', help='自然语言提问')
     parser.add_argument('--raw', action='store_true', help='输出原始 JSON')
     parser.add_argument('--check-update', action='store_true', help='检查是否有新版本')
+    parser.add_argument('--version', action='store_true', help='查看 API 版本')
     args = parser.parse_args()
+    
+    if args.version:
+        result = get_version()
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
     
     # 检查更新模式
     if args.check_update:
         from check_update import check_update
         result = check_update()
-        if result['has_update']:
+        if result.get('has_update'):
             print(result['message'])
             sys.exit(1)
         else:
-            if result['local'] and result['remote']:
+            if result.get('local') and result.get('remote'):
                 print(f"✅ 已是最新版本：{result['local']}")
-            elif result['local']:
-                print(f"📦 本地版本：{result['local']}（远程无版本信息）")
             else:
                 print("ℹ️  无版本信息")
             sys.exit(0)
     
     question = ' '.join(args.question)
-    data = json.loads(DATA.read_text())
     
     # 检测命令
     cmd_info = detect_command(question)
     cmd = cmd_info.pop('cmd')
     
-    # 执行命令
+    # 执行命令 — 调用 API
     if cmd == '_author_first_then_community':
-        author_result = unified_search(data, cmd_info['question'])
-        if author_result.get('matched_node'):
-            comm_id = author_result['matched_node'].get('community_id')
-            result = get_community(data, comm_id)
-            result['query_author'] = author_result['matched_node']['id']
+        # 先查作家获取 community_id，再查社群
+        author_result = get_interview_status(cmd_info['question'])
+        node = author_result.get('node')
+        if node:
+            comm_id = node.get('community_id')
+            if comm_id is not None:
+                result = get_community(comm_id)
+                result['query_author'] = node.get('id')
+            else:
+                result = {'ok': False, 'error': '该作家没有社群信息'}
         else:
-            result = {'error': '未找到该作家'}
+            result = {'ok': False, 'error': '未找到该作家'}
+    elif cmd == 'stats':
+        result = get_stats()
+    elif cmd == 'search':
+        result = get_interview_status(cmd_info['name'])
+    elif cmd == 'interview-status':
+        result = get_interview_status(cmd_info['name'])
+    elif cmd == 'author':
+        result = query_author(cmd_info['name'], cmd_info.get('limit', 20))
+    elif cmd == 'leaderboard':
+        result = get_leaderboard(cmd_info['sort_by'], cmd_info['top'])
+    elif cmd == 'edge':
+        result = query_edge(cmd_info['name1'], cmd_info['name2'])
+    elif cmd == 'community':
+        result = get_community(cmd_info['community_id'])
+    elif cmd == 'story-path':
+        result = get_story_path(cmd_info['key'])
+    elif cmd == 'story-path_list':
+        result = {'ok': True, 'found': False}
     else:
-        if cmd == 'stats':
-            result = data['counts']
-        elif cmd == 'search':
-            result = unified_search(data, cmd_info['name'])
-        elif cmd == 'interview-status':
-            result = get_interview_status(data, cmd_info['name'])
-        elif cmd == 'author':
-            result = query_author(data, cmd_info['name'], cmd_info.get('limit', 20))
-        elif cmd == 'leaderboard':
-            result = get_leaderboard(data, cmd_info['sort_by'], cmd_info['top'])
-        elif cmd == 'edge':
-            result = query_edge(data, cmd_info['name1'], cmd_info['name2'])
-        elif cmd == 'community':
-            result = get_community(data, cmd_info['community_id'])
-        elif cmd == 'story-path':
-            result = get_story_path(data, cmd_info['key'])
-        elif cmd == 'story-path_list':
-            result = 'list'
-        else:
-            result = {'error': 'Unknown command', 'cmd': cmd}
+        result = {'ok': False, 'error': 'Unknown command', 'cmd': cmd}
     
     # 输出结果
     if args.raw:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     else:
         print(format_result(cmd, result))
-        # 自动检查更新（带每日缓存，有更新时追加提示）
+        # 自动检查更新（带每日缓存）
         try:
             from check_update import auto_check_update
             update_msg = auto_check_update()

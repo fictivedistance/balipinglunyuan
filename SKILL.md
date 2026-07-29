@@ -18,11 +18,19 @@ description: "查询《巴黎评论》作家关系网：作家节点、关系边
 
 Use for Paris Network / 《巴黎评论》作家关系网查询。
 
-Data source is read-only, single-source of truth:
+## Architecture (v2.0 — API mode)
 
-- **All data extracted directly from `projects/paris_network/dist_public/index.html`** (v15.1, 2026-07-26) - no external dependencies
-- Graph, leaderboards, story paths, authorInfo, and CATALOG all from the same HTML file
-- Extracted into `data/paris_network_v1_data.json`
+- **No local data file** — skill 包不含数据，查询走 Cloudflare Worker API
+- Worker 从 KV 读取数据，只返回查询结果，不暴露全量数据
+- 离线降级：最近查询结果缓存到 `~/.cache/巴黎评论员/`，API 不可达时降级使用
+- API 地址：`https://paris-network-query-api.theparisreviewchina.workers.dev/api/query`
+- 可通过环境变量 `PARIS_API_BASE` 覆盖 API 地址
+
+## Data source
+
+- 数据源自 Paris Network 网站 `dist_public/index.html`（v15.1, 2026-07-26）
+- 由 `scripts/upload_kv.js` 提取并上传到 Cloudflare KV
+- Worker 启动时从 KV 加载，实例级缓存 5 分钟
 
 ## Query commands
 
@@ -51,7 +59,23 @@ python3 skills/巴黎评论员/scripts/paris_network_query.py story-path --key �
 
 # 访谈状态查询
 python3 skills/巴黎评论员/scripts/paris_network_query.py interview-status "杜鲁门·卡波蒂"
+
+# API 版本查询
+python3 skills/巴黎评论员/scripts/paris_network_query.py version
+
+# 自然语言接口
+python3 skills/巴黎评论员/scripts/nl_interface.py "海明威被《巴黎评论》访谈过吗"
+python3 skills/巴黎评论员/scripts/nl_interface.py "查一下海明威和福克纳的关系"
+python3 skills/巴黎评论员/scripts/nl_interface.py "最受巴黎评论受访者喜爱的作家排行榜"
 ```
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PARIS_API_BASE` | `https://paris-network-query-api.theparisreviewchina.workers.dev` | API 地址 |
+| `PARIS_API_TIMEOUT` | `15` | 请求超时（秒） |
+| `PARIS_CACHE_DIR` | `~/.cache/巴黎评论员` | 离线缓存目录 |
 
 ## Interview-status answer rule (v2 固化版)
 
@@ -256,27 +280,52 @@ python3 skills/巴黎评论员/scripts/paris_network_query.py interview-status "
 
 ## Catalog source
 
-English original series numbers come from PARIS_REVIEW_CATALOG embedded directly in the public HTML, extracted into `catalog.by_en_key` and `catalog.by_zh`.
+English original series numbers come from PARIS_REVIEW_CATALOG stored in Cloudflare KV, accessed via Worker API.
 
 **Name matching works for:**
 - Chinese names (direct match)
 - English names (e.g., Hilary Mantel, Haruki Murakami)
 - Reversed Japanese names (e.g., Murakami Haruki)
 
-English names are matched against `catalog.by_en_key` (and `by_en_key_reversed` for Japanese names), producing accurate positive results for names like Jhumpa Lahiri / Pat Barker / Hilary Mantel / Haruki Murakami.
+Name resolution is handled by the Worker API's `resolveName` function, which mirrors the frontend `searchWriter` logic.
 
 ## Safety / scope
 
-- V1 is read-only.
+- Skill is read-only (query only).
+- No local data file — all data stays on the Worker/KV side.
 - Do not write graph data, auto-merge edges, or update HTML from this skill.
 - For new data import or edge mutation, use the project audit workflow, not this skill.
+- API 限流：每 IP 每分钟 30 次查询。
 
-## Rebuild and validate
+## Validate
 
 ```bash
-python3 skills/巴黎评论员/scripts/build_data.py
+# API 集成验证（需要 Worker 已部署 + KV 数据已上传）
 python3 skills/巴黎评论员/scripts/validate_skill_v1.py
-python3 /opt/homebrew/lib/node_modules/openclaw/skills/skill-creator/scripts/quick_validate.py skills/巴黎评论员
+
+# 指定 API 地址验证
+PARIS_API_BASE=http://localhost:8788 python3 skills/巴黎评论员/scripts/validate_skill_v1.py
+
+# 本地 dev 验证（wrangler dev --local）
+PARIS_API_BASE=http://localhost:8788 python3 skills/巴黎评论员/scripts/nl_interface.py "海明威访谈状态"
+```
+
+## Worker deployment
+
+```bash
+# 1. 创建 KV namespace
+cd projects/paris_network/cloudflare-worker-query-api
+npx wrangler kv:namespace create PARIS_DATA_KV
+# 将输出的 id 填入 wrangler.toml
+
+# 2. 上传数据到 KV
+node scripts/upload_kv.js --html ../dist_public/index.html --namespace <KV_NAMESPACE_ID>
+
+# 3. 部署 Worker
+npx wrangler deploy
+
+# 4. 验证
+curl "https://paris-network-query-api.theparisreviewchina.workers.dev/api/query?action=version"
 ```
 
 

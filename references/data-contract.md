@@ -2,14 +2,11 @@
 
 ## Source
 
-- Graph source: `projects/paris_network/dist_public/index.html` (v15.1, 2026-07-26)
-- Extracted JS constants:
-  - `GRAPH`
-  - `LEADERBOARD_BUBBLES`
-  - `STORY_PATHS_V1`
-  - `authorInfo`
-- Interview info: extracted from `authorInfo` in the same HTML (Chinese published interviews)
-- English catalog source: `PARIS_REVIEW_CATALOG` records embedded in the same HTML
+- Data source: Paris Network public HTML → Cloudflare KV → Worker API
+- No local data file in skill package (v2.0+)
+- API endpoint: `https://paris-network-query-api.theparisreviewchina.workers.dev/api/query`
+- Data in KV: graph, catalog_records, author_info, leaderboard, story_paths, name_map, meta
+- Worker loads from KV on cold start, caches 5 min at instance level
 
 ## Counts expected for v15.1 (skill v1.4.0)
 

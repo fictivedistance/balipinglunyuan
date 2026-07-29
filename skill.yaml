@@ -81,6 +81,12 @@ install:
     - "git clone https://github.com/fictivedistance/balipinglunyuan.git"
     - "cp -r balipinglunyuan ~/.openclaw/workspace/skills/巴黎评论员"
     - "cd ~/.openclaw/workspace/skills/巴黎评论员 && python3 scripts/validate_skill_v1.py"
+  note: "v2.0+ 需要 Worker API 已部署。参见 SKILL.md 的 Worker deployment 段。"
+
+# 验证
+validation:
+  command: "python3 scripts/validate_skill_v1.py"
+  expected: "所有测试通过！skill v2 API 模式验证成功"
 
 # 验证
 validation:

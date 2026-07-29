@@ -276,7 +276,7 @@ python3 scripts/validate_skill_v1.py
 ├── README.md # 本文档（发布说明）
 ├── SKILL.md # OpenClaw 技能文档
 ├── data/
-│ └── paris_network_v1_data.json # 完整数据（718节点/2707边）
+│ └── (无本地数据文件 — v2.0 起改为 API 查询模式)
 ├── scripts/
 │ ├── paris_network_query.py # 底层查询引擎（8个命令）
 │ ├── nl_interface.py # 自然语言接口

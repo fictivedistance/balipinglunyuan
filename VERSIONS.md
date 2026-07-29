@@ -12,6 +12,49 @@
 
 ---
 
+## v2.0.0 (2026-07-29)
+
+### 架构升级：本地数据 → API 查询模式
+
+**核心变更：** skill 不再内嵌数据文件，所有查询走 Cloudflare Worker API。数据保护目标达成——skill 包不可被批量提取数据。
+
+**架构：**
+- **Worker** (`cloudflare-worker-query-api/`)：独立 Cloudflare Worker，从 KV 读取数据，暴露 8 个查询接口
+- **KV 存储**：graph / catalog / author_info / leaderboard / story_paths / name_map 分键存储
+- **Skill 端**：`paris_network_query.py` 改为 API 客户端，`nl_interface.py` 调用 API 客户端
+- **离线降级**：最近查询结果缓存到 `~/.cache/巴黎评论员/`，API 不可达时降级使用（TTL 1 小时）
+- **限流**：每 IP 每分钟 30 次查询
+
+**Skill 包瘦身：**
+- ❌ 删除 `data/paris_network_v1_data.json`（3MB）
+- ❌ 删除 `scripts/build_data.py`（不再需要本地提取）
+- ✅ 新增 Worker 代码（`projects/paris_network/cloudflare-worker-query-api/`）
+- ✅ 新增 KV 上传脚本（`scripts/upload_kv.js`）
+- skill 包从 ~3MB 降到 ~50KB
+
+**API 接口：**
+- `GET /api/query?action=stats` — 统计概览
+- `GET /api/query?action=interview-status&name=X` — 访谈状态
+- `GET /api/query?action=author&name=X` — 作家详情（入边/出边）
+- `GET /api/query?action=edge&name_a=X&name_b=Y` — 双边关系
+- `GET /api/query?action=leaderboard&sort_by=degree&top=10` — 排行榜
+- `GET /api/query?action=community&community_id=N` — 社群
+- `GET /api/query?action=story-path&key=X` — 故事路径
+- `GET /api/query?action=version` — 数据版本
+
+**安全设计：**
+- API 只返回查询结果，不提供全量导出接口
+- author 查询的入边/出边不带 reason 字段（版权保护），需单独请求 `in_edges_with_reason`
+- CORS 白名单限制
+- 限流防批量爬取
+
+**环境变量：**
+- `PARIS_API_BASE` — 覆盖 API 地址
+- `PARIS_API_TIMEOUT` — 请求超时（默认 15 秒）
+- `PARIS_CACHE_DIR` — 缓存目录
+
+---
+
 ## v1.4.0 (2026-07-29)
 
 ### 数据同步：网站 v15.1 → Skill 数据更新
