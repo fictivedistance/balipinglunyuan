@@ -12,6 +12,39 @@
 
 ---
 
+## v1.4.0 (2026-07-29)
+
+### 数据同步：网站 v15.1 → Skill 数据更新
+
+**背景：** Paris Network 网站已从 v13（6月26日）迭代到 v15.1（7月26日），skill 数据滞后一个月。
+
+**数据变更：**
+- 图谱节点：719 → 718（删除 4 个旧节点：约瑟夫·柯内尔、爱德华·霍珀、丹·H.劳伦斯、W.C.菲尔兹；新增 3 个新节点：艾萨克·阿西莫夫、F.R.利维斯、玛丽·莫里斯）
+- 图谱边：2798 → 2707（删除 99 条旧边，新增 4 条新边）
+- Catalog：454 条不变（数量不变，内容可能有修正）
+- author_info / story_paths / leaderboard：不变
+
+**build_data.py 修复：**
+- `extract_js_const` 重写：改用 brace-matching 替代正则，正确处理嵌套大括号（旧正则在 v15 HTML 上失败）
+- `extract_catalog_array` 替换为 `extract_catalog`：v15 HTML 的 `PARIS_REVIEW_CATALOG` 已改为结构化对象（含 `meta`/`records`/`name_map`），旧的启发式扫描会把 718 个图谱节点误抓为 catalog 记录（1172 条 vs 真实 454 条）
+- 保留 `build_name_maps_fallback`：始终从 records 自建 name_map，因为 HTML 内置的 name_map 用 `name_key` slug（如 `achebe`）作 key，与查询脚本的 `normalize_name_key` 不兼容
+- 默认 HTML 路径从 `v13_public.html` 改为 `dist_public/index.html`
+
+**SKILL.md 更新：**
+- 数据源引用从 `v13_public.html` 改为 `dist_public/index.html`
+- 去掉 "v13 版" 前缀
+- Catalog 描述从 "v13_public.html" 改为 "public HTML"
+
+**验证：**
+- ✅ `validate_skill_v1.py` 全量测试通过（名字映射、搜索逻辑、边查询、访谈信息）
+- ✅ 新节点查询正常（艾萨克·阿西莫夫、玛丽·莫里斯、F.R.利维斯）
+- ✅ 删除节点查询正确返回 `in_graph=False`（约瑟夫·柯内尔）
+- ✅ 新边查询正常（村上春树 → 玛丽·莫里斯）
+- ✅ Catalog 454 条完整
+- ✅ 日文名反序查询正常（Haruki Murakami → 村上春树）
+
+---
+
 ## v1.3.0 (2026-07-03)
 
 ### 重构 + Bug 修复 + 体验优化

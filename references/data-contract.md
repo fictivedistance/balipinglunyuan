@@ -2,7 +2,7 @@
 
 ## Source
 
-- Graph source: `projects/paris_network/v13_public.html`
+- Graph source: `projects/paris_network/dist_public/index.html` (v15.1, 2026-07-26)
 - Extracted JS constants:
   - `GRAPH`
   - `LEADERBOARD_BUBBLES`
@@ -11,10 +11,10 @@
 - Interview info: extracted from `authorInfo` in the same HTML (Chinese published interviews)
 - English catalog source: `PARIS_REVIEW_CATALOG` records embedded in the same HTML
 
-## Counts expected for v13 (skill v1.3.0)
+## Counts expected for v15.1 (skill v1.4.0)
 
-- nodes: 719
-- links: 2798
+- nodes: 718
+- links: 2707
 - leaderboard boards: 8
 - story paths: 8
 - catalog records: 454

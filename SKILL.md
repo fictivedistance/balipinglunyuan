@@ -20,7 +20,7 @@ Use for Paris Network / 《巴黎评论》作家关系网查询。
 
 Data source is read-only, single-source of truth:
 
-- **All data extracted directly from `projects/paris_network/v13_public.html`** - no external dependencies
+- **All data extracted directly from `projects/paris_network/dist_public/index.html`** (v15.1, 2026-07-26) - no external dependencies
 - Graph, leaderboards, story paths, authorInfo, and CATALOG all from the same HTML file
 - Extracted into `data/paris_network_v1_data.json`
 
@@ -55,7 +55,7 @@ python3 skills/巴黎评论员/scripts/paris_network_query.py interview-status "
 
 ## Interview-status answer rule (v2 固化版)
 
-**核心规则**：v13 版 454 条访谈目录 = 截至 2026 年 6 月 19 日《巴黎评论》全部已访谈作家。
+**核心规则**：454 条访谈目录 = 截至 2026 年 6 月 19 日《巴黎评论》全部已访谈作家。
 - 在目录里 = 明确告知「被访谈过」
 - 不在目录里 = 明确告知「未访谈过」，不要含糊
 - 不在目录但在图谱 = 补一句「被某作家提及」
@@ -256,7 +256,7 @@ python3 skills/巴黎评论员/scripts/paris_network_query.py interview-status "
 
 ## Catalog source
 
-English original series numbers come from CATALOG embedded directly in v13_public.html, extracted into `catalog.by_en_key` and `catalog.by_zh`.
+English original series numbers come from PARIS_REVIEW_CATALOG embedded directly in the public HTML, extracted into `catalog.by_en_key` and `catalog.by_zh`.
 
 **Name matching works for:**
 - Chinese names (direct match)

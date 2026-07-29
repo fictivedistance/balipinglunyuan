@@ -14,81 +14,70 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 PROJECT = ROOT / 'projects' / 'paris_network'
-DEFAULT_HTML = PROJECT / 'v13_public.html'
+DEFAULT_HTML = PROJECT / 'dist_public' / 'index.html'
 DATA_DIR = Path(__file__).resolve().parents[1] / 'data'
 
 
 def extract_js_const(html: str, name: str) -> dict:
-    """Extract a JavaScript const object from HTML."""
-    pattern = r'const\s+' + re.escape(name) + r'\s*=\s*(\{.*?\});'
-    m = re.search(pattern, html, re.S)
+    """Extract a JavaScript const object from HTML.
+    
+    Handles nested braces correctly, unlike the old regex-only approach
+    which failed on objects containing nested } in strings.
+    """
+    pattern = r'const\s+' + re.escape(name) + r'\s*=\s*'
+    m = re.search(pattern, html)
     if not m:
         raise SystemExit(f'missing JS const {name}')
-    return json.loads(m.group(1))
-
-
-def extract_catalog_array(html: str) -> list:
-    """Extract PARIS_REVIEW_CATALOG records from HTML inline array.
-    
-    Each record looks like:
-    {"year":"1953","series":"...","id":"prcat-0001","url":"...","name_en":"...","name_zh":"..."}
-    
-    Uses single-pass scan for performance (O(n) total).
-    """
-    records = []
-    n = len(html)
-    
-    # Stack of { start positions for currently-open objects
-    # When we see }, the top of stack tells us where this object started.
-    open_stack = []
-    
-    in_string = False
-    escape_next = False
-    i = 0
-    
-    while i < n:
+    pos = m.end()
+    while pos < len(html) and html[pos] in ' \n\t':
+        pos += 1
+    if pos >= len(html) or html[pos] not in '{[':
+        raise SystemExit(f'{name} value is not an object or array')
+    # Handle nested braces/brackets with string awareness
+    open_ch = html[pos]
+    close_ch = '}' if open_ch == '{' else ']'
+    depth = 0
+    in_str = False
+    esc = False
+    i = pos
+    while i < len(html):
         ch = html[i]
-        
-        if escape_next:
-            escape_next = False
-            i += 1
-            continue
-        
+        if esc:
+            esc = False; i += 1; continue
         if ch == '\\':
-            escape_next = True
-            i += 1
-            continue
-        
+            esc = True; i += 1; continue
         if ch == '"':
-            in_string = not in_string
-            i += 1
-            continue
-        
-        if in_string:
-            i += 1
-            continue
-        
-        if ch == '{':
-            open_stack.append(i)
-            i += 1
-            continue
-        
-        if ch == '}':
-            if open_stack:
-                start = open_stack.pop()
-                # Try to parse this object
-                try:
-                    rec = json.loads(html[start:i+1])
-                    if isinstance(rec, dict) and (rec.get('name_en') or rec.get('name_zh')):
-                        records.append(rec)
-                except:
-                    pass
-            i += 1
-            continue
-        
+            in_str = not in_str; i += 1; continue
+        if in_str:
+            i += 1; continue
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return json.loads(html[pos:i+1])
         i += 1
+    raise SystemExit(f'unmatched brace for {name}')
+
+
+def extract_catalog(html: str) -> tuple[list, dict]:
+    """Extract PARIS_REVIEW_CATALOG from HTML.
     
-    return records
+    Newer HTML (v14+) stores it as a structured object:
+      { meta: {...}, records: [...], name_map: {zh_to_en, en_to_zh} }
+    
+    Returns (records, name_map) where name_map has en_to_zh and zh_to_en.
+    """
+    cat = extract_js_const(html, 'PARIS_REVIEW_CATALOG')
+    records = cat.get('records', [])
+    name_map = cat.get('name_map', {})
+    
+    # Validate records
+    valid = [r for r in records if r.get('name_en') or r.get('name_zh')]
+    if len(valid) != len(records):
+        print(f'⚠️  {len(records) - len(valid)} records missing names, filtered')
+    
+    return valid, name_map
 
 
 def normalize_name_key(s: str) -> str:
@@ -109,11 +98,12 @@ def normalize_name_key(s: str) -> str:
     s = re.sub(r'[\s·.．]+', '', s)
     return s.lower()
 
-def build_name_maps(catalog_records: list) -> dict:
-    """Build en->zh and zh->en name maps from catalog.
+
+def build_name_maps_fallback(catalog_records: list) -> dict:
+    """Build en->zh and zh->en name maps from catalog records.
     
-    Same as PARIS_REVIEW_CATALOG.name_map in frontend.
-    Also adds reversed-order keys for Japanese names (e.g., Murakami Haruki -> Haruki Murakami).
+    Fallback used when the HTML does not contain a pre-built name_map
+    inside PARIS_REVIEW_CATALOG.
     """
     en_to_zh = {}
     zh_to_en = {}
@@ -126,7 +116,6 @@ def build_name_maps(catalog_records: list) -> dict:
             norm_en = normalize_name_key(name_en)
             norm_zh = normalize_name_key(name_zh)
             
-            # English -> Chinese (may have multiple, pick first non-empty)
             if norm_en and norm_en not in en_to_zh:
                 en_to_zh[norm_en] = name_zh
             
@@ -138,7 +127,6 @@ def build_name_maps(catalog_records: list) -> dict:
                 if norm_reversed and norm_reversed not in en_to_zh:
                     en_to_zh[norm_reversed] = name_zh
             
-            # Chinese -> list of English names
             if norm_zh:
                 zh_to_en.setdefault(norm_zh, []).append(name_en)
     
@@ -146,6 +134,8 @@ def build_name_maps(catalog_records: list) -> dict:
         'en_to_zh': en_to_zh,
         'zh_to_en': zh_to_en,
     }
+
+
 
 
 def main():
@@ -163,9 +153,12 @@ def main():
     story = extract_js_const(html, 'STORY_PATHS_V1')
     author_info = extract_js_const(html, 'authorInfo')
     
-    # Extract catalog
-    catalog_records = extract_catalog_array(html)
-    name_map = build_name_maps(catalog_records)
+    # Extract catalog (structured object in newer HTML)
+    catalog_records, _cat_name_map = extract_catalog(html)
+    # Always build name_map from records using our normalize_name_key,
+    # because the HTML's built-in name_map uses name_key slugs (e.g. 'achebe')
+    # which don't match the query script's normalize_name_key output.
+    name_map = build_name_maps_fallback(catalog_records)
     
     # Build interviews lookup (Chinese published interviews)
     # from authorInfo
@@ -181,8 +174,8 @@ def main():
     
     # Build bundle
     bundle = {
-        'version': 'v13-skill-v1-pseudo-b2',
-        'source_html': 'projects/paris_network/v13_public.html',
+        'version': 'v15.1-skill-v1',
+        'source_html': 'projects/paris_network/dist_public/index.html',
         'counts': {
             'nodes': len(graph.get('nodes', [])),
             'links': len(graph.get('links', [])),
