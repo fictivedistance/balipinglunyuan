@@ -176,6 +176,69 @@ def main():
     if cache_files:
         print(f"  ✅ 缓存目录: {cache_dir} ({len(cache_files)} 个缓存文件)")
 
+    # ── 10. 路径发现测试（shortest-path） ──
+    print("\n[10] 最短路径发现")
+    r = api_get('shortest-path', name_a='海明威', name_b='卡夫卡')
+    assert_true(r.get('has_path') is True, "海明威→卡夫卡 应有路径")
+    assert_true(r.get('path_length', 0) > 0, f"路径长度应 > 0，实际 {r.get('path_length')}")
+    path = r.get('path', [])
+    assert_true(isinstance(path, list) and len(path) > 0, "path 应为非空列表")
+    if r.get('has_path') and path:
+        print(f"  ✅ 海明威→卡夫卡: 路径长度={r.get('path_length')}, 节点={len(path)}")
+
+    # 无路径测试：找一个图谱中不存在的作家
+    r2 = api_get('shortest-path', name_a='海明威', name_b='莎士比亚')
+    has_path_2 = r2.get('has_path', False)
+    # 莎士比亚可能在图谱中（作为 mentioned），这时有路径也合理；重点是字段结构
+    assert_true(isinstance(has_path_2, bool), "has_path 应为布尔值")
+    if not has_path_2:
+        print(f"  ✅ 海明威→莎士比亚: 无路径 (as expected)")
+    else:
+        print(f"  ⚠️  海明威→莎士比亚: 有路径 (莎士比亚可能在图谱中)")
+        warnings += 1
+
+    # ── 11. 交叉关联测试（cross-query） ──
+    print("\n[11] 交叉关联查询")
+
+    # 11a. uninterviewed_most_mentioned
+    r = api_get('cross-query', type='uninterviewed_most_mentioned', top=5)
+    entries = r.get('entries', [])
+    assert_true(len(entries) > 0, "uninterviewed_most_mentioned 应有结果")
+    if entries:
+        for e in entries:
+            assert_true(e.get('inDegree', 0) > 0, f"{e.get('id')} inDegree 应 > 0")
+        print(f"  ✅ uninterviewed_most_mentioned: {len(entries)} 条, inDegree 全部 > 0")
+
+    # 11b. positive_vs_negative
+    r = api_get('cross-query', type='positive_vs_negative', top=5)
+    entries = r.get('entries', [])
+    assert_true(len(entries) > 0, "positive_vs_negative 应有结果")
+    if entries:
+        print(f"  ✅ positive_vs_negative: {len(entries)} 条")
+
+    # 11c. cross_community_bridges
+    r = api_get('cross-query', type='cross_community_bridges', top=5)
+    entries = r.get('entries', [])
+    assert_true(len(entries) > 0, "cross_community_bridges 应有结果")
+    if entries:
+        for e in entries:
+            cc = e.get('cross_community_count', 0)
+            assert_true(cc >= 2, f"{e.get('id')} cross_community_count 应 >= 2，实际 {cc}")
+        print(f"  ✅ cross_community_bridges: {len(entries)} 条, cross_community_count 全部 >= 2")
+
+    # ── 12. 社群列表测试（list-communities） ──
+    print("\n[12] 社群列表")
+    r = api_get('list-communities')
+    assert_true(r.get('total_communities', 0) > 0, f"总社群数应 > 0，实际 {r.get('total_communities')}")
+    communities = r.get('communities', [])
+    assert_true(len(communities) > 0, "communities 列表应非空")
+    if communities:
+        for c in communities:
+            assert_true(c.get('community_id') is not None, "community 应有 community_id")
+            assert_true(c.get('member_count', 0) >= 0, f"{c.get('community_id')} member_count 应 >= 0")
+        print(f"  ✅ 社群总数: {r.get('total_communities')}, 首条: id={communities[0].get('community_id')}, "
+              f"成员={communities[0].get('member_count')}")
+
     # ── 汇总 ──
     print("\n" + "=" * 70)
     total = passed + failed

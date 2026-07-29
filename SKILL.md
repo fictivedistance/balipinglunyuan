@@ -67,6 +67,11 @@ python3 skills/巴黎评论员/scripts/paris_network_query.py version
 python3 skills/巴黎评论员/scripts/nl_interface.py "海明威被《巴黎评论》访谈过吗"
 python3 skills/巴黎评论员/scripts/nl_interface.py "查一下海明威和福克纳的关系"
 python3 skills/巴黎评论员/scripts/nl_interface.py "最受巴黎评论受访者喜爱的作家排行榜"
+
+# v2.1.0 新增：路径发现、交叉查询、社群列表
+python3 skills/巴黎评论员/scripts/paris_network_query.py shortest-path "海明威" "卡夫卡"
+python3 skills/巴黎评论员/scripts/paris_network_query.py cross-query --type uninterviewed_most_mentioned --top 10
+python3 skills/巴黎评论员/scripts/paris_network_query.py list-communities
 ```
 
 ### 环境变量
@@ -76,6 +81,14 @@ python3 skills/巴黎评论员/scripts/nl_interface.py "最受巴黎评论受访
 | `PARIS_API_BASE` | `https://paris-network-query-api.theparisreviewchina.workers.dev` | API 地址 |
 | `PARIS_API_TIMEOUT` | `15` | 请求超时（秒） |
 | `PARIS_CACHE_DIR` | `~/.cache/巴黎评论员` | 离线缓存目录 |
+
+## v2.1.0 新增端点
+
+| 端点 | 参数 | 说明 |
+|------|------|------|
+| `shortest-path` | `name_a`, `name_b` | BFS 最短路径，返回路径节点 + 路径上的边 |
+| `cross-query` | `type`, `top` | 交叉关联查询，type 可选：`uninterviewed_most_mentioned` / `interviewed_but_isolated` / `cross_community_bridges` / `positive_vs_negative` |
+| `list-communities` | — | 列出全部社群 + 成员人数 |
 
 ## Interview-status answer rule (v2 固化版)
 

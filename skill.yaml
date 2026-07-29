@@ -1,15 +1,16 @@
 name: 巴黎评论员
 display_name: Paris Review Analyst · 巴黎评论员
-version: 1.4.0
+version: 2.1.0
 description: |
   《巴黎评论》作家关系网智能查询技能。基于简体中文版《巴黎评论》系列的
-  作家关系知识图谱，支持自然语言查询访谈状态、作家关系、排行榜、社群、
-  故事路径。
+  作家关系知识图谱，支持自然语言查询访谈状态、作家关系、路径发现、
+  排行榜、社群、故事路径、交叉关联。
+  v2.0+ 改为 API 模式，所有查询走 Cloudflare Worker API，skill 包不含数据。
 author:
   name: 巴黎评论编辑部
   email: fictivedistance@agent.qq.com
   github: fictivedistance
-license: MIT
+license: AGPL-3.0-or-later
 homepage: https://www.fictivedistance.com
 
 # 入口配置 - Agent 用来发现技能的命令
@@ -22,13 +23,19 @@ commands:
   - name: search
     description: 搜索作家（中英文双向匹配）
   - name: author
-    description: 作家详情（入边/出边）
+    description: 作家详情（被提及/提及他人）
   - name: interview-status
     description: 访谈状态（中文版收录信息）
   - name: leaderboard
     description: 作家排行榜（8 种排序维度）
   - name: edge
     description: 双边关系查询
+  - name: shortest-path
+    description: 最短路径发现（两个作家之间经过谁）
+  - name: cross-query
+    description: 交叉关联查询（4 种类型）
+  - name: list-communities
+    description: 列出所有社群及成员人数
   - name: community
     description: 社群成员查询
   - name: story-path
@@ -60,17 +67,24 @@ patterns:
   - ".*排行榜.*"
   - ".*社群.*"
   - ".*故事路径.*"
+  - ".*隔着谁.*"
+  - ".*怎么连.*"
+  - ".*最短.*"
+  - ".*从未被访谈.*"
+  - ".*跨社群.*"
+  - ".*正负评价.*"
 
 # 依赖
 dependencies:
   python: ">=3.8"
   packages: []
 
-# 数据文件
+# 数据文件 — v2.0+ 改为 API 模式，skill 包内不含数据
 data:
-  - path: data/paris_network_v1_data.json
-    size_mb: 2.5
-    description: 作家关系图谱核心数据（718节点/2707边）
+  - source: cloudflare-kv
+    namespace: PARIS_DATA_KV
+    api: https://paris-network-query-api.theparisreviewchina.workers.dev
+    description: 作家关系图谱数据存储在 Cloudflare KV，通过 Worker API 查询
 
 # 安装方式
 install:
@@ -78,7 +92,7 @@ install:
   target_dir: ~/.openclaw/workspace/skills/巴黎评论员
   repo_url: https://github.com/fictivedistance/balipinglunyuan
   commands:
-    - "git clone https://github.com/fictivedistance/balipinglunyuan.git"
+    - "git clone --branch <latest-tag> --depth 1 https://github.com/fictivedistance/balipinglunyuan.git"
     - "cp -r balipinglunyuan ~/.openclaw/workspace/skills/巴黎评论员"
     - "cd ~/.openclaw/workspace/skills/巴黎评论员 && python3 scripts/validate_skill_v1.py"
   note: "v2.0+ 需要 Worker API 已部署。参见 SKILL.md 的 Worker deployment 段。"
@@ -88,11 +102,6 @@ validation:
   command: "python3 scripts/validate_skill_v1.py"
   expected: "所有测试通过！skill v2 API 模式验证成功"
 
-# 验证
-validation:
-  command: "python3 scripts/validate_skill_v1.py"
-  expected: "所有测试通过！skill v1 与网页端 100% 对齐"
-
 # 标签 - 用于技能市场搜索
 tags:
   - literature
@@ -101,6 +110,7 @@ tags:
   - knowledge-graph
   - chinese
   - nlp-query
+  - api-mode
 
 # 兼容性
 compatibility:

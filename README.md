@@ -61,6 +61,9 @@
 | **访谈状态** | 中文版收录状态、译者、采访者、年份完整信息 |
 | **8种排行榜** | 被提及数、影响力、中介中心性、正负评价等 |
 | **双边关系** | 任意两位作家之间的直接关系查询 + 原文证据 |
+| **路径发现** | 两个作家之间的最短路径（中间经过谁） |
+| **交叉关联** | 未被访谈但被提及最多 / 跨社群桥接 / 正负评价反差 |
+| **社群浏览** | 列出全部 13 个社群名 + 成员人数 |
 | **离线缓存** | API 不可达时自动降级到本地缓存（TTL 1 小时） |
 | **数据保护** | skill 包零数据，所有查询走 API，无法批量提取 |
 
@@ -69,7 +72,7 @@
 ## 安装
 
 > **⚠️ 重要：请按指定版本安装，不要使用 `git clone` 默认拉取 main 分支。**
-> 默认拉取的是 main 分支最新代码，**不是**最新 tag。推荐明确指定 tag 版本号（如 `v2.0.0`）以避免装到老版本。
+> 默认拉取的是 main 分支最新代码，**不是**最新 tag。推荐明确指定 tag 版本号（如 `v2.1.0`）以避免装到老版本。
 >
 > **最新版本：** https://github.com/fictivedistance/balipinglunyuan/tags
 
@@ -215,6 +218,55 @@ git fetch --tags
 
 ---
 
+### 4. 关系路径发现
+**提问示例**：
+```
+海明威和乔伊斯怎么联系上的？
+
+卡夫卡到博尔赫斯隔着谁？
+
+海明威到福克纳最短几步？
+```
+
+**返回信息**：
+- 最短路径（中间经过的作家）
+- 路径长度（步数）
+- 路径上每一步的关系类型（正面/负面/中性）
+
+---
+
+### 5. 交叉关联查询
+**提问示例**：
+```
+哪些作家被提及很多但从没被《巴黎评论》访谈过？
+
+谁被访谈过但在图谱里几乎是孤立的？
+
+哪些作家连接了多个不同流派社群？
+
+哪两个作家的正负评价反差最大？
+```
+
+**支持的交叉查询类型**：
+- `uninterviewed_most_mentioned` — 被提及最多但从未被访谈
+- `interviewed_but_isolated` — 被访谈过但图谱连接少
+- `cross_community_bridges` — 跨社群桥接节点
+- `positive_vs_negative` — 正负评价反差最大
+
+---
+
+### 6. 社群浏览
+**提问示例**：
+```
+所有社群有哪些？
+
+共有多少个社群？
+```
+
+**返回信息**：所有 13 个社群的名称 + 成员人数。
+
+---
+
 ## 命令行使用
 
 ### 自然语言接口（推荐）
@@ -239,6 +291,17 @@ python3 scripts/paris_network_query.py leaderboard --sort-by pageRank --top 10
 
 # 双边关系
 python3 scripts/paris_network_query.py edge "海明威" "福克纳"
+
+# 最短路径发现
+python3 scripts/paris_network_query.py shortest-path "海明威" "卡夫卡"
+
+# 交叉关联查询
+python3 scripts/paris_network_query.py cross-query --type uninterviewed_most_mentioned --top 10
+python3 scripts/paris_network_query.py cross-query --type positive_vs_negative --top 10
+python3 scripts/paris_network_query.py cross-query --type cross_community_bridges --top 10
+
+# 社群列表
+python3 scripts/paris_network_query.py list-communities
 
 ```
 
@@ -277,6 +340,9 @@ python3 scripts/validate_skill_v1.py
 - 访谈状态判断逻辑固化
 - 排行榜查询（含 degree 动态排序）
 - 社群查询、故事路径
+- 最短路径发现（BFS）
+- 交叉关联查询（3 种类型）
+- 社群列表
 - 离线缓存验证
 
 ---
@@ -298,6 +364,21 @@ python3 scripts/validate_skill_v1.py
 ---
 
 ## 更新日志
+
+### v2.1.0 (2026-07-29)
+- **新增关系路径发现**：BFS 最短路径查询
+- **新增交叉关联查询**：4 种类型（未被访谈但被提及最多 / 被访谈但孤立 / 跨社群桥接 / 正负评价反差）
+- **新增社群列表**：列出全部 13 个社群名 + 成员人数
+- **输出叙事化改造**：
+ - 去掉 emoji 图谱术语（👍/👎/⚪ → 正面/负面/中性）
+ - "入边/出边" → "被 X 位作家提及，提及了 Y 位作家"
+ - 排行榜去掉"社群#"等噪音
+ - 边查询证据去掉分类标签噪音，用「」引用原文
+ - 重复访谈（同一篇收录在不同文集）标注说明
+ - 人名标点空格归一化（"乔治 · 普林顿" → "乔治·普林顿"）
+- **新增 3 个 API 端点**：`shortest-path` / `cross-query` / `list-communities`
+- **意图识别扩展**：路径 / 交叉查询 / 社群列表三类自然语言提问自动识别
+- 验证脚本扩展到 69 项
 
 ### v2.0.0 (2026-07-29)
 - **架构变更：本地数据模式 → API 查询模式**
@@ -371,6 +452,6 @@ python3 scripts/validate_skill_v1.py
 
 ---
 
-**发布日期**：2026-07-29
+**发布日期**：2026-07-29 (v2.1.0)
 
 **数据版本**：v15.1（截至 2026 年 7 月）

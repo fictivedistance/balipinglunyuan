@@ -15,8 +15,24 @@ from paris_network_query import (
     get_interview_status, query_author,
     get_leaderboard, query_edge, get_community, get_story_path,
     get_stats, get_version, normalize_name_key,
+    get_shortest_path, get_cross_query, get_communities,
     api_get
 )
+
+
+# ============================================================
+# 辅助函数
+# ============================================================
+
+def _clean_name(name: str) -> str:
+    """归一化人名标点空格。"""
+    if not name:
+        return ''
+    import re
+    # 统一间隔号前后无空格, 去掉名字中的多余空格
+    name = re.sub(r'\s*·\s*', '·', name)
+    name = re.sub(r'\s+', '', name)
+    return name
 
 
 # ============================================================
@@ -125,6 +141,53 @@ def _detect_story_path(q: str) -> dict | None:
     return {'cmd': 'story-path_list'}
 
 
+def _detect_path(q: str) -> dict | None:
+    """检测关系路径发现查询"""
+    if not any(kw in q for kw in ['路径', '隔着谁', '怎么连上的', '连通', '最短路径',
+                                   '能联系到吗', '能连到吗', '几步']):
+        return None
+    
+    names = _extract_two_names(q)
+    if names:
+        return {'cmd': 'shortest-path', 'name1': names[0], 'name2': names[1]}
+    return None
+
+
+def _detect_cross_query(q: str) -> dict | None:
+    """检测交叉关联查询"""
+    query_type = None
+    top = 20
+
+    if any(kw in q for kw in ['没访谈', '没被访谈', '未被访谈', '没采访过', '从没被',
+                                '没做过访谈', '不在访谈']):
+        if any(kw in q for kw in ['最多', '被提及', '提到最多', '排行']):
+            query_type = 'uninterviewed_most_mentioned'
+    elif any(kw in q for kw in ['跨界', '跨社群', '桥接', '连接不同']):
+        query_type = 'cross_community_bridges'
+    elif any(kw in q for kw in ['正负评价', '正负反差', '争议最大', '评价分歧']):
+        query_type = 'positive_vs_negative'
+    elif any(kw in q for kw in ['被访谈但', '访谈过但', '访谈了但']):
+        if any(kw in q for kw in ['连接少', '关系少', '孤立', '边缘']):
+            query_type = 'interviewed_but_isolated'
+
+    if not query_type:
+        return None
+
+    num_match = re.search(r'前\s*(\d+)', q) or re.search(r'top\s*(\d+)', q, re.I)
+    if num_match:
+        top = int(num_match.group(1))
+
+    return {'cmd': 'cross-query', 'query_type': query_type, 'top': top}
+
+
+def _detect_list_communities(q: str) -> dict | None:
+    """检测社群列表查询"""
+    if any(kw in q for kw in ['所有社群', '社群列表', '有哪些社群', '多少个社群',
+                                '全部社群', '社群都有']):
+        return {'cmd': 'list-communities'}
+    return None
+
+
 def _detect_author(q: str) -> dict | None:
     """检测作家详情查询"""
     if not any(kw in q for kw in ['详情', '详细信息', '所有关系', '连接数', '入边', '出边',
@@ -198,9 +261,10 @@ def detect_command(question: str) -> dict:
     """根据自然语言提问检测要执行的命令和参数。"""
     q = question.strip()
     
-    for detector in [_detect_leaderboard, _detect_edge, _detect_community,
-                     _detect_story_path, _detect_author, _detect_interview_status,
-                     _detect_stats]:
+    for detector in [_detect_leaderboard, _detect_edge, _detect_path,
+                     _detect_cross_query, _detect_list_communities,
+                     _detect_community, _detect_story_path, _detect_author,
+                     _detect_interview_status, _detect_stats]:
         result = detector(q)
         if result is not None:
             return result
@@ -304,36 +368,38 @@ def format_result(cmd: str, result: dict) -> str:
     
     elif cmd == 'author':
         if not result.get('found', result.get('found_in_network')):
-            return f"❌ 未找到「{result.get('query', '')}」"
+            return f"未找到「{result.get('query', '')}」"
         
         node = result.get('node', {})
         resolved = result.get('resolved_name', node.get('id', ''))
-        in_count = result.get('in_degree_edges_count', len(result.get('in_edges', [])))
-        out_count = result.get('out_degree_edges_count', len(result.get('out_edges', [])))
-        
-        lines = [f"👤 {resolved} 详情"]
-        lines.append("")
-        lines.append(f"- 入边（被提及）：{in_count} 条")
-        lines.append(f"- 出边（提及他人）：{out_count} 条")
-        lines.append("")
-        
         in_edges = result.get('in_edges', [])
         out_edges = result.get('out_edges', [])
+        in_count = len(in_edges)
+        out_count = len(out_edges)
+        
+        lines = [resolved]
+        lines.append(f"被 {in_count} 位作家提及，自己提及了 {out_count} 位作家。")
+        lines.append("")
         
         if in_edges:
-            lines.append("📥 被谁提及（前5条）：")
-            for e in in_edges[:5]:
-                type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e.get('type', ''), e.get('type', ''))
-                infl_label = ' ⚡影响' if e.get('influence') else ''
-                lines.append(f"  {e.get('source', 'N/A')} → {type_label}{infl_label}")
+            pos = [e.get('source', '') for e in in_edges if e.get('type') == 'positive']
+            neg = [e.get('source', '') for e in in_edges if e.get('type') == 'negative']
+            neu = [e.get('source', '') for e in in_edges if e.get('type') == 'neutral']
+            if pos:
+                lines.append(f"正面评价来自：{'、'.join(pos[:5])}{'…' if len(pos) > 5 else ''}")
+            if neg:
+                lines.append(f"负面评价来自：{'、'.join(neg[:5])}{'…' if len(neg) > 5 else ''}")
+            if not pos and not neg:
+                lines.append(f"提及者包括：{'、'.join([e.get('source', '') for e in in_edges[:5]])}")
         
         if out_edges:
             lines.append("")
-            lines.append("📤 提及了谁（前5条）：")
-            for e in out_edges[:5]:
-                type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e.get('type', ''), e.get('type', ''))
-                infl_label = ' ⚡影响' if e.get('influence') else ''
-                lines.append(f"  → {e.get('target', 'N/A')} ({type_label}{infl_label})")
+            out_pos = [e.get('target', '') for e in out_edges if e.get('type') == 'positive']
+            out_neg = [e.get('target', '') for e in out_edges if e.get('type') == 'negative']
+            if out_pos:
+                lines.append(f"他正面评价了：{'、'.join(out_pos[:5])}{'…' if len(out_pos) > 5 else ''}")
+            if out_neg:
+                lines.append(f"他负面评价了：{'、'.join(out_neg[:5])}{'…' if len(out_neg) > 5 else ''}")
         
         return "\n".join(lines)
     
@@ -347,73 +413,137 @@ def format_result(cmd: str, result: dict) -> str:
             'positiveIn': '正面评价数', 'negativeIn': '负面评价数', 'influenceIn': '影响关系数'
         }
         
-        lines = [f"🏆 作家排行榜（按 {sort_names.get(sort_by, sort_by)} 排序）"]
+        lines = [f"作家排行榜 — 按{sort_names.get(sort_by, sort_by)}排序"]
         lines.append("")
         
         for item in entries:
             rank = item.get('rank', '')
             wid = item.get('id', 'N/A')
-            deg = item.get('degree', 0)
-            group_label = {'interviewee': '🎤受访', 'mentioned': '📝提及', 'both': '✨两者'}.get(item.get('group', ''), item.get('group', ''))
-            comm = item.get('community_id', '')
-            lines.append(f"  {rank}. {wid} — {deg} 连接 {group_label} 社群#{comm}")
+            primary = item.get('degree', item.get('inDegree', 0))
+            lines.append(f"  {rank}. {wid} — {primary}")
         
         return "\n".join(lines)
     
     elif cmd == 'edge':
         if not result.get('has_direct_edge'):
             found = result.get('found_in_network', [False, False])
-            msg = f"❌ 「{result['resolved_names'][0]}」和「{result['resolved_names'][1]}」之间没有直接联系"
+            msg = f"「{result['resolved_names'][0]}」和「{result['resolved_names'][1]}」之间没有直接联系"
             if not all(found):
-                msg += "\n   （其中一位作家不在图谱中）"
+                msg += "\n（其中一位作家不在图谱中）"
             return msg
         
-        lines = [f"🔗 「{result['resolved_names'][0]}」和「{result['resolved_names'][1]}」的关系"]
-        lines.append(f"   共 {result['edge_count']} 条直接边")
+        lines = [f"「{result['resolved_names'][0]}」与「{result['resolved_names'][1]}」的关系"]
+        lines.append(f"共 {result['edge_count']} 条直接关系")
         lines.append("")
         
+        type_map = {'positive': '正面评价', 'negative': '负面评价', 'neutral': '中性提及'}
         edges = result.get('edges', [])
         for e in edges:
-            type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e.get('type', ''), e.get('type', ''))
-            infl_label = ' ⚡影响关系' if e.get('influence') else ''
-            lines.append(f"  {e.get('source', 'N/A')} → {e.get('target', 'N/A')} ({type_label}{infl_label})")
+            type_label = type_map.get(e.get('type', ''), e.get('type', ''))
+            infl_label = '（影响关系）' if e.get('influence') else ''
+            lines.append(f"{e.get('source', '')} 对 {e.get('target', '')} — {type_label}{infl_label}")
             if e.get('reason'):
                 reason = e['reason']
-                if ' | ' in reason:
-                    parts = reason.split(' | ')
-                    for i, part in enumerate(parts):
-                        lines.append(f"    证据{i+1}：{part}")
-                else:
-                    lines.append(f"    原文：{reason}")
+                parts = reason.split(' | ') if ' | ' in reason else [reason]
+                for part in parts:
+                    if '受访者对该作家表达正面评价' not in part and '受访者对该作家表达负面评价' not in part:
+                        lines.append(f"   原文：「{part}」")
         
-        # 反向边
         if result.get('reverse_edge_count', 0) > 0:
             lines.append("")
-            lines.append(f"   反向边（{result['resolved_names'][1]} → {result['resolved_names'][0]}）：{result['reverse_edge_count']} 条")
+            lines.append(f"反向（{result['resolved_names'][1]} → {result['resolved_names'][0]}）：{result['reverse_edge_count']} 条")
             for e in result.get('reverse_edges', []):
-                type_label = {'positive': '👍正面', 'negative': '👎负面', 'neutral': '⚪中性'}.get(e.get('type', ''), e.get('type', ''))
-                lines.append(f"  {e.get('source', 'N/A')} → {e.get('target', 'N/A')} ({type_label})")
+                type_label = type_map.get(e.get('type', ''), e.get('type', ''))
+                lines.append(f"{e.get('source', '')} 对 {e.get('target', '')} — {type_label}")
                 if e.get('reason'):
-                    lines.append(f"    原文：{e['reason']}")
+                    lines.append(f"   原文：「{e['reason']}」")
         
         return "\n".join(lines)
     
     elif cmd == 'community':
         if not result.get('found', result.get('ok', True)):
-            return f"❌ 未找到社群 #{result.get('community_id', '')}\n\n共有 {result.get('total_communities', '?')} 个社群"
+            return f"未找到社群 #{result.get('community_id', '')}"
         
         members = result.get('members', [])
-        lines = [f"👥 社群 #{result.get('community_id', '')}（共 {result.get('member_count', len(members))} 位成员）"]
-        if result.get('community_name'):
-            lines[0] += f" — {result['community_name']}"
-        lines.append("")
+        name = result.get('community_name', '')
+        header = f"社群「{name}」（#{result.get('community_id', '')}，共 {result.get('member_count', len(members))} 位成员）"
+        lines = [header, ""]
         
         for m in members[:15]:
-            art_label = f" [{m.get('art_category', '')}]" if m.get('art_category') else ''
-            lines.append(f"  {m.get('id', 'N/A')} — {m.get('degree', 0)} 连接{art_label}")
+            lines.append(f"  {m.get('id', 'N/A')} — {m.get('degree', 0)} 条连接")
         
         if len(members) > 15:
-            lines.append(f"  ... 还有 {len(members) - 15} 位")
+            lines.append(f"  …还有 {len(members) - 15} 位")
+        
+        return "\n".join(lines)
+    
+    elif cmd == 'shortest-path':
+        if not result.get('has_path'):
+            names = result.get('resolved_names', ['', ''])
+            msg = f"「{names[0]}」和「{names[1]}」之间不存在连通路径"
+            found = result.get('found_in_network', [True, True])
+            if not all(found):
+                msg += "\n（其中一位作家不在图谱中）"
+            return msg
+        
+        path = result.get('path', [])
+        length = result.get('path_length', 0)
+        lines = [f"「{path[0]}」到「{path[-1]}」的最短路径（{length} 步）"]
+        lines.append("")
+        lines.append("  " + " → ".join(path))
+        lines.append("")
+        
+        edges = result.get('edges', [])
+        if edges:
+            type_map = {'positive': '正面', 'negative': '负面', 'neutral': '中性'}
+            for e in edges:
+                direction = e.get('direction', 'forward')
+                if direction == 'forward':
+                    pair = f"{e.get('source', '')} → {e.get('target', '')}"
+                else:
+                    pair = f"{e.get('target', '')} → {e.get('source', '')}"
+                type_label = type_map.get(e.get('type', ''), e.get('type', ''))
+                lines.append(f"  {pair} ({type_label})")
+        
+        return "\n".join(lines)
+    
+    elif cmd == 'cross-query':
+        entries = result.get('entries', [])
+        qtype = result.get('type', '')
+        type_names = {
+            'uninterviewed_most_mentioned': '被提及最多但从未被《巴黎评论》访谈的作家',
+            'interviewed_but_isolated': '被访谈过但在图谱中连接很少的作家',
+            'cross_community_bridges': '跨社群桥接作家',
+            'positive_vs_negative': '正负评价反差最大的作家',
+        }
+        lines = [type_names.get(qtype, qtype)]
+        lines.append("")
+        
+        for item in entries:
+            rank = item.get('rank', '')
+            wid = item.get('id', 'N/A')
+            if qtype == 'uninterviewed_most_mentioned':
+                lines.append(f"  {rank}. {wid} — 被提及 {item.get('inDegree', 0)} 次")
+            elif qtype == 'positive_vs_negative':
+                pos = item.get('positiveIn', 0)
+                neg = item.get('negativeIn', 0)
+                lines.append(f"  {rank}. {wid} — 正面 {pos} / 负面 {neg}（净值 {'+' if item.get('net', 0) >= 0 else ''}{item.get('net', 0)}）")
+            elif qtype == 'cross_community_bridges':
+                lines.append(f"  {rank}. {wid} — 跨 {item.get('cross_community_count', 0)} 个社群，提及 {item.get('outDegree', 0)} 人")
+            else:
+                lines.append(f"  {rank}. {wid} — {item.get('degree', 0)} 条连接")
+        
+        return "\n".join(lines)
+    
+    elif cmd == 'list-communities':
+        communities = result.get('communities', [])
+        total = result.get('total_communities', len(communities))
+        lines = [f"共 {total} 个社群"]
+        lines.append("")
+        
+        for c in communities:
+            name = c.get('community_name', '') or f"社群#{c.get('community_id', '')}"
+            lines.append(f"  {name} — {c.get('member_count', 0)} 位成员")
         
         return "\n".join(lines)
     
@@ -515,6 +645,12 @@ def main():
         result = get_story_path(cmd_info['key'])
     elif cmd == 'story-path_list':
         result = {'ok': True, 'found': False}
+    elif cmd == 'shortest-path':
+        result = get_shortest_path(cmd_info['name1'], cmd_info['name2'])
+    elif cmd == 'cross-query':
+        result = get_cross_query(cmd_info['query_type'], cmd_info['top'])
+    elif cmd == 'list-communities':
+        result = get_communities()
     else:
         result = {'ok': False, 'error': 'Unknown command', 'cmd': cmd}
     

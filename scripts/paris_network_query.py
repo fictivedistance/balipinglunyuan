@@ -158,6 +158,15 @@ def get_stats() -> dict:
 def get_version() -> dict:
     return api_get('version')
 
+def get_shortest_path(name_a: str, name_b: str) -> dict:
+    return api_get('shortest-path', name_a=name_a, name_b=name_b)
+
+def get_cross_query(query_type: str = 'uninterviewed_most_mentioned', top: int = 20) -> dict:
+    return api_get('cross-query', type=query_type, top=top)
+
+def get_communities() -> dict:
+    return api_get('list-communities')
+
 
 # ── 兼容旧接口：normalize_name_key 保留供 nl_interface 使用 ──
 def normalize_name_key(s):
@@ -206,6 +215,18 @@ def main():
 
     p = sub.add_parser('version', help='Check API version')
 
+    p = sub.add_parser('shortest-path', help='Find shortest path between two writers')
+    p.add_argument('name1')
+    p.add_argument('name2')
+
+    p = sub.add_parser('cross-query', help='Cross-reference queries')
+    p.add_argument('--type', default='uninterviewed_most_mentioned',
+                   choices=['uninterviewed_most_mentioned', 'interviewed_but_isolated',
+                            'cross_community_bridges', 'positive_vs_negative'])
+    p.add_argument('--top', type=int, default=20)
+
+    p = sub.add_parser('list-communities', help='List all communities')
+
     args = ap.parse_args()
 
     if args.cmd == 'search':
@@ -226,6 +247,12 @@ def main():
         result = get_story_path(args.key)
     elif args.cmd == 'version':
         result = get_version()
+    elif args.cmd == 'shortest-path':
+        result = get_shortest_path(args.name1, args.name2)
+    elif args.cmd == 'cross-query':
+        result = get_cross_query(args.type, args.top)
+    elif args.cmd == 'list-communities':
+        result = get_communities()
     else:
         ap.print_help()
         return
