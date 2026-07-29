@@ -46,7 +46,9 @@
 **两者的关系：**
 - **作家宇宙网站**负责浏览、探索、发现——适合慢慢看、随机踩点、发现新关联。
 - **巴黎评论员技能**负责快速问答——适合明确查某个作家、某种关系、某个列表。
-- 数据来自**同一版本**的图谱，技能是网站的子集+文本化接口。
+- 数据来自**同一版本**的图谱，技能通过 API 实时查询，不内嵌数据
+
+> **v2.0 架构变更：** 技能不再内嵌 3MB 数据文件，改为通过 Cloudflare Worker API 实时查询。skill 包内零数据，无法被批量提取。支持离线缓存降级（TTL 1 小时）。
 
 ---
 
@@ -59,13 +61,15 @@
 | **访谈状态** | 中文版收录状态、译者、采访者、年份完整信息 |
 | **8种排行榜** | 被提及数、影响力、中介中心性、正负评价等 |
 | **双边关系** | 任意两位作家之间的直接关系查询 + 原文证据 |
+| **离线缓存** | API 不可达时自动降级到本地缓存（TTL 1 小时） |
+| **数据保护** | skill 包零数据，所有查询走 API，无法批量提取 |
 
 ---
 
 ## 安装
 
 > **⚠️ 重要：请按指定版本安装，不要使用 `git clone` 默认拉取 main 分支。**
-> 默认拉取的是 main 分支最新代码，**不是**最新 tag。推荐明确指定 tag 版本号（如 `v1.4.0`）以避免装到老版本。
+> 默认拉取的是 main 分支最新代码，**不是**最新 tag。推荐明确指定 tag 版本号（如 `v2.0.0`）以避免装到老版本。
 >
 > **最新版本：** https://github.com/fictivedistance/balipinglunyuan/tags
 
@@ -102,6 +106,8 @@ git clone --branch <latest-tag> --depth 1 https://github.com/fictivedistance/bal
 cd balipinglunyuan
 python3 scripts/nl_interface.py "海明威和福克纳有什么关系"
 ```
+
+> **注意：** v2.0 起需要联网访问 API。默认 API 地址为 `https://paris-network-query-api.theparisreviewchina.workers.dev`，可通过环境变量 `PARIS_API_URL` 覆盖。API 不可达时自动降级到本地缓存。
 
 ### 下载指定 tag 的 ZIP
 
@@ -240,15 +246,17 @@ python3 scripts/paris_network_query.py edge "海明威" "福克纳"
 
 ## 数据来源
 
-所有数据提取自 **简体中文版《巴黎评论》系列** ：
+所有数据提取自 **简体中文版《巴黎评论》系列** ，存储在 Cloudflare KV 中，通过 Worker API 提供查询：
 
-- **提取时间**：2026年6月
+- **数据版本**：v15.1（2026 年 7 月）
 - **数据规模**：
  - 718 位作家节点
  - 2707 条关系边（含原文证据）
  - 454 篇《巴黎评论》官方访谈目录
  - 191 位已出版中文版的作家信息
-- **搜索逻辑**：与网页端 100% 对齐（标点归一化、中英文映射、模糊匹配）
+- **API 地址**：`https://paris-network-query-api.theparisreviewchina.workers.dev`
+- **限流**：每 IP 每分钟 30 次请求
+- **离线缓存**：API 不可达时降级到本地缓存（`~/.cache/巴黎评论员/`，TTL 1 小时）
 
 ---
 
@@ -261,11 +269,15 @@ python3 scripts/validate_skill_v1.py
 ```
 
 验证项：
-- 搜索逻辑与前端 100% 对齐
-- 中英文双向映射（736 en→zh / 390 zh→en）
+- API 连通性 + 版本检查
+- 统计数据一致性
+- 中英文双向映射（390 en→zh / 390 zh→en）
 - 日本人名反序支持（Murakami Haruki → 村上春树）
 - 目录回退机制（图谱中没有但访谈目录中有的作家也能找到）
 - 访谈状态判断逻辑固化
+- 排行榜查询（含 degree 动态排序）
+- 社群查询、故事路径
+- 离线缓存验证
 
 ---
 
@@ -275,19 +287,30 @@ python3 scripts/validate_skill_v1.py
 巴黎评论员/
 ├── README.md # 本文档（发布说明）
 ├── SKILL.md # OpenClaw 技能文档
-├── data/
-│ └── (无本地数据文件 — v2.0 起改为 API 查询模式)
 ├── scripts/
-│ ├── paris_network_query.py # 底层查询引擎（8个命令）
+│ ├── paris_network_query.py # API 客户端（8个查询命令）
 │ ├── nl_interface.py # 自然语言接口
-│ ├── build_data.py # 数据构建脚本
-│ └── validate_skill_v1.py # 验证脚本
+│ ├── check_update.py # 版本检查（API + git tags）
+│ └── validate_skill_v1.py # API 集成验证脚本
 └── references/ # 参考资料
 ```
 
 ---
 
 ## 更新日志
+
+### v2.0.0 (2026-07-29)
+- **架构变更：本地数据模式 → API 查询模式**
+- 不再内嵌 3MB 数据文件，所有查询通过 Cloudflare Worker API 实时获取
+- 新增离线缓存降级机制（TTL 1 小时，缓存在 `~/.cache/巴黎评论员/`）
+- 数据保护：skill 包零数据，防止批量提取
+- `paris_network_query.py` 重写为 API 客户端
+- `nl_interface.py` 改为调用 API 客户端
+- `validate_skill_v1.py` 重写为 API 集成测试（24 项）
+- `check_update.py` 改为检查 API 版本 + git tags
+- 删除 `data/paris_network_v1_data.json`（3MB）和 `scripts/build_data.py`
+- API 限流：每 IP 每分钟 30 次
+- API 端点：8 个查询接口（stats / interview-status / author / edge / leaderboard / community / story-path / version）
 
 ### v1.3.0 (2026-07-03)
 - 重构 `detect_command`：拆分为独立函数，提升可维护性
@@ -348,6 +371,6 @@ python3 scripts/validate_skill_v1.py
 
 ---
 
-**发布日期**：2026-06-29
+**发布日期**：2026-07-29
 
 **数据版本**：v15.1（截至 2026 年 7 月）
