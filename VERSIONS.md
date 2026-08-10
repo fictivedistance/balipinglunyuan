@@ -1,3 +1,20 @@
+## v2.2.1 (2026-08-10)
+
+### Bug 修复：nl_interface 意图识别与输出格式（4 项）
+
+**触发来源：** v2.2.0 跨 agent 评估发现 v2.1.0 遗留 bug
+
+**修复清单：**
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 1 | shortest-path 不认「X 到 Y 最短几步」句式，误判为 search | `_detect_path` 新增「到」分隔词 fallback；`_extract_two_names` 后缀列表补「最短路径」「最短几步」 |
+| 2 | edge 查询 `has_direct_edge=False` 时直接 return，丢弃反向边 | 无正向边时检查 `reverse_edge_count`，有则格式化输出反向关系 |
+| 3 | leaderboard 显示值总取 `degree` 字段，inDegree/pageRank 等排序无效 | 按 `sort_by` 动态选字段，pageRank/betweenness 保留 6 位小数 |
+| 4 | 「影响力最大的前N位作家」不触发排行榜（「最大」不在触发词里） | 触发词列表补「最大」 |
+
+---
+
 ## v2.2.0 (2026-08-10)
 
 ### 发版：v2.1.3 → v2.2.0（次版本号升级）

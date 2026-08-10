@@ -365,6 +365,12 @@ python3 scripts/validate_skill_v1.py
 
 ## 更新日志
 
+### v2.2.1 (2026-08-10)
+- 修复 shortest-path 不认「X 到 Y」句式（误判为 search）
+- 修复 edge 查询丢弃反向边（has_direct_edge=False 时直接 return）
+- 修复 leaderboard 显示值总取 degree（inDegree/pageRank 等排序无效）
+- 触发词补「最大」（「影响力最大的前N位作家」现在能识别）
+
 ### v2.2.0 (2026-08-10)
 - 字段完整性自检：访谈状态输出缺失字段时往 stderr 告警
 - 回归测试集 + CI：40 条 case，GitHub Actions PR 自动跑

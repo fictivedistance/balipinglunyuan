@@ -81,7 +81,7 @@ def _clean_name(name: str) -> str:
 
 def _detect_leaderboard(q: str) -> dict | None:
     """检测排行榜类查询"""
-    if not any(kw in q for kw in ['排行榜', '排名', '最多', '最高', '前十', 'top', 'Top', '排第几',
+    if not any(kw in q for kw in ['排行榜', '排名', '最多', '最高', '最大', '前十', 'top', 'Top', '排第几',
                                    '最伟大', '最牛', '最重要', '最受欢迎', '最受',
                                    '最讨厌', '最反感', '最喜爱', '最赞赏', '最好评', '最差']):
         return None
@@ -117,7 +117,8 @@ def _extract_two_names(q: str) -> tuple[str, str] | None:
     q_clean = q
     for suffix in ['有什么关系', '的关系', '有联系吗', '有关系吗', '有关系', '有联系',
                    '怎么看', '如何看', '的看法', '怎么评价', '如何评价',
-                   '的评价', '提到过', '提到', '看法', '评价', '吗', '呢', '？', '?']:
+                   '的评价', '最短路径', '最短几步', '提到过', '提到',
+                   '看法', '评价', '吗', '呢', '？', '?']:
         if q_clean.endswith(suffix):
             q_clean = q_clean[:-len(suffix)]
             break
@@ -214,7 +215,7 @@ def _detect_path(q: str) -> dict | None:
     if names:
         return {'cmd': 'shortest-path', 'name1': names[0], 'name2': names[1]}
 
-    # 退路：「X 怎么连到/连上 Y」模式（如「博尔赫斯怎么连到福克纳」）
+    # 退路 1：「X 怎么连到/连上 Y」模式（如「博尔赫斯怎么连到福克纳」）
     for verb in ['怎么连到', '怎么连上', '怎么联系', '能联系', '能连到']:
         if verb in q:
             parts = q.split(verb, 1)
@@ -223,6 +224,16 @@ def _detect_path(q: str) -> dict | None:
             right = re.sub(r'[了吗？?呢。]+$', '', right)
             if left and right and len(left) > 1 and len(right) > 1:
                 return {'cmd': 'shortest-path', 'name1': left, 'name2': right}
+
+    # 退路 2：「X 到 Y 最短几步 / 怎么连」模式（如「海明威到卡夫卡最短几步」）
+    # 用「到」做分隔，但必须确认是路径查询（上方关键词已过滤）
+    if '到' in q:
+        parts = q.split('到', 1)
+        left = parts[0].strip()
+        right = parts[1].strip()
+        right = re.sub(r'[最短几步怎么连上吗？?呢。]+$', '', right).strip()
+        if left and right and len(left) > 1 and len(right) > 1:
+            return {'cmd': 'shortest-path', 'name1': left, 'name2': right}
 
     return None
 
@@ -533,17 +544,46 @@ def format_result(cmd: str, result: dict) -> str:
         lines = [f"作家排行榜 — 按{sort_names.get(sort_by, sort_by)}排序"]
         lines.append("")
         
+        # 根据 sort_by 选取对应字段的值，而非总取 degree
+        field_map = {
+            'degree': 'degree', 'inDegree': 'inDegree', 'outDegree': 'outDegree',
+            'pageRank': 'pageRank', 'betweenness': 'betweenness',
+            'positiveIn': 'positiveIn', 'negativeIn': 'negativeIn', 'influenceIn': 'influenceIn'
+        }
+        value_field = field_map.get(sort_by, 'degree')
+        
         for item in entries:
             rank = item.get('rank', '')
             wid = item.get('id', 'N/A')
-            primary = item.get('degree', item.get('inDegree', 0))
-            lines.append(f"  {rank}. {wid} — {primary}")
+            primary = item.get(value_field, item.get('degree', 0))
+            # pageRank / betweenness 保留小数
+            if value_field in ('pageRank', 'betweenness'):
+                primary = round(primary, 6)
+            lines.append(f"  {rank}. {wid} - {primary}")
         
         return "\n".join(lines)
     
     elif cmd == 'edge':
         if not result.get('has_direct_edge'):
             found = result.get('found_in_network', [False, False])
+            # 即使没有正向边，也检查是否有反向边
+            reverse_count = result.get('reverse_edge_count', 0)
+            if reverse_count > 0:
+                lines = [f"「{result['resolved_names'][1]}」对「{result['resolved_names'][0]}」有关系（反向）"]
+                lines.append(f"共 {reverse_count} 条反向关系")
+                lines.append("")
+                type_map = {'positive': '正面评价', 'negative': '负面评价', 'neutral': '中性提及'}
+                for e in result.get('reverse_edges', []):
+                    type_label = type_map.get(e.get('type', ''), e.get('type', ''))
+                    infl_label = '（影响关系）' if e.get('influence') else ''
+                    lines.append(f"{e.get('source', '')} 对 {e.get('target', '')} - {type_label}{infl_label}")
+                    if e.get('reason'):
+                        reason = e['reason']
+                        parts = reason.split(' | ') if ' | ' in reason else [reason]
+                        for part in parts:
+                            if '受访者对该作家表达正面评价' not in part and '受访者对该作家表达负面评价' not in part:
+                                lines.append(f"   原文：「{part}」")
+                return "\n".join(lines)
             msg = f"「{result['resolved_names'][0]}」和「{result['resolved_names'][1]}」之间没有直接联系"
             if not all(found):
                 msg += "\n（其中一位作家不在图谱中）"
