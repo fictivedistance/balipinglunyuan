@@ -1,3 +1,19 @@
+## v2.2.0 (2026-08-10)
+
+### 发版：v2.1.3 → v2.2.0（次版本号升级）
+
+**理由：** v2.1.3 的字段自检 + CI 体系算"新增功能"（次版本号升级），不是单纯 bug 修复（修订号）。
+
+**打包状态：**
+- 代码：v2.1.3 同等（字段自检 + 测试集 + CI）
+- 元数据：版本号、CI workflow 全部对齐 v2.2.0
+- commit 历史：去除 `Co-Authored-By: Claude` trailer（GitHub Contributors 列表只保留 fictivedistance）
+
+**给老巴的提醒：**
+- 如果以后改 SKILL/scripts，version 号要同步改 skill.yaml（之前 v2.1.3 漏改，v2.2.0 一起补上）
+
+---
+
 ## v2.1.3 (2026-08-10)
 
 ### 跨 agent 一致性强化 + 回归测试基础设施

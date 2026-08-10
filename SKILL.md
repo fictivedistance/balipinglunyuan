@@ -89,7 +89,7 @@ python3 skills/巴黎评论员/scripts/paris_network_query.py list-communities
 | `cross-query` | `type`, `top` | 交叉关联查询，type 可选：`uninterviewed_most_mentioned` / `interviewed_but_isolated` / `cross_community_bridges` / `positive_vs_negative` |
 | `list-communities` | — | 列出全部社群 + 成员人数 |
 
-## Interview-status output field checklist (v2.1.3 自检清单)
+## Interview-status output field checklist (v2.2.0 自检清单)
 
 **为什么需要：** v2.1.2 bug 教训——agent 处理 interview-status 输出时，如果发现字段缺失，倾向于凭印象补全而不调脚本，于是把残缺输出当真。本节是给所有 agent（Claude/Codex/M3 等）的硬性字段清单，**不可跳过**。
 
@@ -122,15 +122,15 @@ python3 skills/巴黎评论员/scripts/paris_network_query.py list-communities
 
 ### 自检失败处理
 
-`scripts/nl_interface.py` 内置字段自检（v2.1.3 起）：
+`scripts/nl_interface.py` 内置字段自检（v2.2.0 起）：
 
-- 检测到字段缺失 → 往 stderr 输出 `⚠️ [字段自检 v2.1.3] 以下字段缺失：...`
+- 检测到字段缺失 → 往 stderr 输出 `⚠️ [字段自检 v2.2.0] 以下字段缺失：...`
 - agent 收到此告警 → **不要凭印象补全**，应：
   1. 明确告知用户「该字段数据缺失」
   2. 把告警内容附在回复末尾，便于老巴/开发者排查
   3. 在 PROGRESS.md 记一笔（如果跑在 Claude Code / Codex 环境）
 
-**禁止规则（v2.1.3 新增）：**
+**禁止规则（v2.2.0 新增）：**
 - ❌ 不要在字段缺失时编造 series / number / year / url
 - ❌ 不要把 `node.interview` 当成 catalog_info（仅回落用，不可混淆）
 - ❌ 不要在 has_chinese_interview=True 时只输出「译者/采访者/年份」（v2.1.2 bug 重现）

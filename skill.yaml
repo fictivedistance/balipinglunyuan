@@ -1,6 +1,6 @@
 name: 巴黎评论员
 display_name: Paris Review Analyst · 巴黎评论员
-version: 2.1.2
+version: 2.2.0
 description: |
   《巴黎评论》作家关系网智能查询技能。基于简体中文版《巴黎评论》系列的
   作家关系知识图谱，支持自然语言查询访谈状态、作家关系、路径发现、
@@ -79,7 +79,7 @@ dependencies:
   python: ">=3.8"
   packages: []
 
-# 发布包控制 (v2.1.3) — tests/ 不随 skill 包分发
+# 发布包控制 (v2.2.0) — tests/ 不随 skill 包分发
 distribution:
   include:
     - SKILL.md
