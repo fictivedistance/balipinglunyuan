@@ -366,12 +366,10 @@ python3 scripts/validate_skill_v1.py
 ## 更新日志
 
 ### v2.2.0 (2026-08-10)
-- **字段完整性自检**：`nl_interface.py` 新增 `_self_check_interview_status()`，输出缺失字段往 stderr 告警
-- **SKILL.md 字段自检清单**：列出所有必填字段 + 回落规则 + 跨 agent 处理建议
-- **回归测试集 + CI**：20 条字段 case + 20 条 CLI case + GitHub Actions workflow（PR 自动跑）
-- **`distribution.exclude`**：`tests/` / `.github/` 不随发布包分发
-- 顺手修复 5 条 CLI 意图识别盲区（"X 怎么连到 Y" / "从未被访谈但被提及最多" 等）
-- commit 历史去除 `Co-Authored-By: Claude` trailer，GitHub Contributors 只保留 fictivedistance
+- 字段完整性自检：访谈状态输出缺失字段时往 stderr 告警
+- 回归测试集 + CI：40 条 case，GitHub Actions PR 自动跑
+- `tests/` / `.github/` 不随发布包分发
+- commit 历史去除 `Co-Authored-By: Claude` trailer
 
 ### v2.1.0 (2026-07-29)
 - **新增关系路径发现**：BFS 最短路径查询
