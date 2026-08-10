@@ -19,11 +19,21 @@ on:
   push:
     branches: [main]
     paths:
-      - 'skills/巴黎评论员/**'
+      - 'scripts/**'
+      - 'references/**'
+      - 'tests/**'
+      - 'SKILL.md'
+      - 'skill.yaml'
+      - 'VERSIONS.md'
       - '.github/workflows/test-skill.yml'
   pull_request:
     paths:
-      - 'skills/巴黎评论员/**'
+      - 'scripts/**'
+      - 'references/**'
+      - 'tests/**'
+      - 'SKILL.md'
+      - 'skill.yaml'
+      - 'VERSIONS.md'
       - '.github/workflows/test-skill.yml'
 
 # 取消正在跑的同分支旧 run，避免冗余
@@ -45,8 +55,8 @@ jobs:
 
       - name: 跑 CLI 烟雾测试（无需 API）
         run: |
-          cd skills/巴黎评论员
-          python3 tests/test_cli_smoke.py
+          cd tests
+          python3 test_cli_smoke.py
 
   field-completeness:
     name: 字段完整性回归（需 API）
@@ -64,12 +74,12 @@ jobs:
           # Worker API 地址，老巴需在 GitHub Secrets 配置
           PARIS_API_BASE: ${{ secrets.WORKER_API_URL }}
         run: |
-          cd skills/巴黎评论员
+          cd tests
           if [ -z "$PARIS_API_BASE" ]; then
             echo "::warning::PARIS_API_BASE 未配置，用 offline fixtures 跑测（仅覆盖海明威 1 条）"
-            python3 tests/test_field_completeness.py --offline
+            python3 test_field_completeness.py --offline
           else
-            python3 tests/test_field_completeness.py
+            python3 test_field_completeness.py
           fi
 
       - name: 上传测试报告
@@ -77,5 +87,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: field-completeness-report
-          path: skills/巴黎评论员/tests/report.txt
+          path: tests/report.txt
           retention-days: 7
