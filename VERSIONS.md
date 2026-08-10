@@ -1,3 +1,35 @@
+## v2.1.3 (2026-08-10)
+
+### 跨 agent 一致性强化 + 回归测试基础设施
+
+**背景：** 老巴问"为什么同一个 skill 在 codex / claude code / openclaw 表现不同"，结论是 skill 是 prompt 文本不是程序，不同 agent 行为差异无法靠 SKILL.md 文本杜绝。改为三管齐下：
+
+1. **脚本层硬性自检** — `scripts/nl_interface.py` 新增 `_self_check_interview_status()`，interview-status 输出前校验字段完整性，缺失字段往 stderr 告警（不静默）
+2. **SKILL.md 字段自检清单** — 新增 "Interview-status output field checklist (v2.1.3)" 段，列出所有必填字段 + 回落规则 + 跨 agent 处理建议
+3. **回归测试集 + CI** — `tests/` 目录建好（20 条字段 case + 20 条 CLI case + README），通过 `skill.yaml` 的 `distribution.exclude` 排除发布包
+
+**改动清单：**
+
+| 文件 | 改动 |
+|------|------|
+| `scripts/nl_interface.py` | + 60 行：字段自检函数 + stderr 告警输出 |
+| `SKILL.md` | + 60 行：「输出字段自检清单」段（含跨 agent 处理建议） |
+| `skill.yaml` | + 18 行：`distribution.include/exclude` 配置 |
+| `tests/test_field_completeness.py` | 新建：20 条字段完整性 case（10 中文 + 6 英文 + 3 未访谈 + 1 多收录） |
+| `tests/test_cli_smoke.py` | 新建：20 条 CLI 命令识别 case（不调 API） |
+| `tests/README.md` | 新建：跑法 + CI 接入示例 + 设计原则 |
+
+**验证：**
+- CLI 烟雾测试：20/20 通过
+- 字段完整性测试（offline）：1/1 通过（fixture 覆盖海明威；其余需在线跑）
+- v2.1.2 bug（奥登缺 series/number/issue/url）：脚本层自检已拦住，stderr 告警
+
+**给老巴的建议：**
+- CI 接入后每次 PR 自动跑，避免再被字段缺失咬到
+- `tests/snapshots/` 留空待人工 diff，发版前补上当前输出快照做 baseline
+
+---
+
 # 巴黎评论员 Skill 版本记录
 
 > 本文件记录 Skill 自身的版本变更。
@@ -9,6 +41,42 @@
 > - 主版本：不兼容的大改
 > - 次版本：新增功能（向后兼容）
 > - 修订号：bug 修复（向后兼容）
+
+---
+
+## v2.1.2 (2026-08-10)
+
+### Bug 修复：访谈摘要缺编号与系列信息
+
+**触发来源：** GitHub issue（用户反馈）
+
+**问题：** `scripts/nl_interface.py` 的 `interview-status` 输出在 `has_chinese_interview=True` 分支完全没读 `catalog_info`，导致中文版收录的访谈只展示译者/采访者/年份，**缺：**
+- 原刊编号（如 `The Art of Poetry No. 17`）
+- 系列名称（如 `The Art of Poetry`）
+- 原刊期号（含 `issue_season_year` 与 `issue_number`）
+- 原文链接（`catalog_info.url`）
+
+与底层 `paris_network_query.py interview-status` 相比字段不完整。
+
+**复现：**
+```bash
+python3 scripts/nl_interface.py "W.H.奥登被《巴黎评论》访谈过吗"
+# 改前：只输出译者/采访者/年份
+# 改后：补"🏷 原刊：系列 / 编号 / 期号" + "🔗 原文" 链接
+```
+
+**修复：** `scripts/nl_interface.py`
+- `cmd == 'interview-status'` 且 `has_cn=True` 分支：补原刊系列 / 编号 / 期号（含 `issue_number`） + 原文链接，数据源优先 `result.catalog_info`，缺失时回落 `node.interview`
+- `cmd == 'search'` 且仅 `catalog_info` 命中但 `node` 未命中分支（同一类问题的姊妹路径）：同样补 series / number / issue_season_year / url
+
+**附带维护改动（顺手带上）：**
+- `SKILL.md` · `references/data-contract.md` · `skill.yaml`：把硬编码的 Worker API URL 抽成环境变量（`PARIS_API_BASE` 默认值见 `paris_network_query.py` 脚本顶部），v2.1.0 之后遗留未提交
+
+**回归验证：**
+- 奥登（中文收录 2 篇 · 原刊 1 次）：✅ The Art of Poetry No. 17 / Spring 1974 第 57 期
+- 卡佛（中文收录 1 篇）：✅ The Art of Fiction No. 76 / Summer 1983 第 88 期
+- Pat Barker（仅英文版 · 不在图谱）：✅ The Art of Fiction No. 243 / Winter 2018 第 227 期
+- `validate_skill_v1.py`：69/69 通过，0 失败，1 警告（莎士比亚预期情况）
 
 ---
 

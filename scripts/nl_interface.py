@@ -21,6 +21,46 @@ from paris_network_query import (
 
 
 # ============================================================
+# 字段自检 (v2.1.3) — 防止 SKILL 升级或 agent 截断导致字段丢失
+# ============================================================
+
+# interview-status 在 has_chinese_interview=True 时必须展示的字段
+# 来源：data-contract.md "Interview status fields" + SKILL.md 状态 A1 模板
+_REQUIRED_CN_FIELDS = ('series', 'number', 'issue_season_year', 'issue_number', 'url')
+# 仅英文版收录（无中文版）时必须展示的字段
+_REQUIRED_EN_ONLY_FIELDS = ('series', 'number', 'year', 'url')
+
+
+def _self_check_interview_status(result: dict) -> list[str]:
+    """检查 interview-status 结果字段完整性，返回缺失字段名列表。
+
+    v2.1.2 bug 教训：脚本输出字段缺失时，agent 倾向于凭印象补全而不调脚本，
+    于是把残缺输出当真。改在这里做硬性自检，宁可输出告警也不漏字段。
+    """
+    missing = []
+    if not result.get('ok', True):
+        return missing  # 错误结果由调用方处理
+
+    if result.get('has_chinese_interview'):
+        # 中文版收录：必须展示原刊系列/编号/期号/原文链接
+        ci = result.get('catalog_info') or {}
+        node = result.get('node') or {}
+        # 缺失时回落 node.interview，逻辑与 format_result 一致
+        if not ci.get('series') and isinstance(node.get('interview'), dict):
+            ci = node.get('interview') or ci
+        for f in _REQUIRED_CN_FIELDS:
+            if not ci.get(f):
+                missing.append(f'catalog_info.{f}')
+    elif result.get('catalog_info'):
+        # 仅英文版：必须展示系列/编号/年份/原文链接
+        ci = result.get('catalog_info') or {}
+        for f in _REQUIRED_EN_ONLY_FIELDS:
+            if not ci.get(f):
+                missing.append(f'catalog_info.{f}')
+    return missing
+
+
+# ============================================================
 # 辅助函数
 # ============================================================
 
@@ -81,16 +121,38 @@ def _extract_two_names(q: str) -> tuple[str, str] | None:
         if q_clean.endswith(suffix):
             q_clean = q_clean[:-len(suffix)]
             break
-    
+
     for sep in ['和', '与', '跟', '对']:
         if sep in q_clean:
             parts = q_clean.split(sep, 1)
             name1 = parts[0].strip()
             name2 = parts[1].strip()
-            name2 = name2.lstrip('的').strip()
+            # 清理右侧噪音词：从 name2 里移除路径/关系词（不只剥前缀，因为可能出现在中段）
+            # 例如「卡夫卡之间隔着谁」要变成「卡夫卡」、「福克纳怎么连」要变成「福克纳」
+            noise_pattern = r'(之间隔着谁|怎么连上|怎么连|怎么联系|能联系|能连到|之间|隔着谁|中间)'
+            name2 = re.sub(noise_pattern, '', name2).strip()
+            # 清理尾部疑问词 / 助词
+            name2 = re.sub(r'[了吗？?呢。]+$', '', name2).strip()
+            name2 = re.sub(r'^[的]+', '', name2).strip()
             if name1 and name2 and len(name1) > 1 and len(name2) > 1:
                 return (name1, name2)
-    
+
+    # 退路：含关系动词但无明确分隔词（如「博尔赫斯怎么评价卡尔维诺」「纳博科夫提到过陀思妥耶夫斯基」）
+    rel_verbs = ['怎么评价', '如何评价', '提到过', '提到', '评价', '看法']
+    for verb in rel_verbs:
+        if verb in q_clean:
+            idx = q_clean.find(verb)
+            left = q_clean[:idx].strip()
+            right = q_clean[idx + len(verb):].strip()
+            # 左侧清理：「怎么」「怎么评价」的反向
+            for prefix in ['怎么', '如何']:
+                if left.endswith(prefix):
+                    left = left[:-len(prefix)].strip()
+            # 右侧清理：「了」「过」「吗」「？」等
+            right = re.sub(r'[了吗？?呢。]+$', '', right)
+            if left and right and len(left) > 1 and len(right) > 1:
+                return (left, right)
+
     return None
 
 
@@ -143,13 +205,25 @@ def _detect_story_path(q: str) -> dict | None:
 
 def _detect_path(q: str) -> dict | None:
     """检测关系路径发现查询"""
-    if not any(kw in q for kw in ['路径', '隔着谁', '怎么连上的', '连通', '最短路径',
+    if not any(kw in q for kw in ['路径', '隔着谁', '怎么连上', '怎么连', '连通', '最短路径',
                                    '能联系到吗', '能连到吗', '几步']):
         return None
-    
+
+    # 优先用标准分隔词提取两个名字
     names = _extract_two_names(q)
     if names:
         return {'cmd': 'shortest-path', 'name1': names[0], 'name2': names[1]}
+
+    # 退路：「X 怎么连到/连上 Y」模式（如「博尔赫斯怎么连到福克纳」）
+    for verb in ['怎么连到', '怎么连上', '怎么联系', '能联系', '能连到']:
+        if verb in q:
+            parts = q.split(verb, 1)
+            left = parts[0].strip()
+            right = parts[1].strip()
+            right = re.sub(r'[了吗？?呢。]+$', '', right)
+            if left and right and len(left) > 1 and len(right) > 1:
+                return {'cmd': 'shortest-path', 'name1': left, 'name2': right}
+
     return None
 
 
@@ -258,17 +332,22 @@ def _detect_stats(q: str) -> dict | None:
 
 
 def detect_command(question: str) -> dict:
-    """根据自然语言提问检测要执行的命令和参数。"""
+    """根据自然语言提问检测要执行的命令和参数。
+
+    检测顺序重要性（v2.1.3）：
+    - path 必须先于 edge（"A 和 B 之间隔着谁" 应是路径，不是双边关系）
+    - cross-query 必须先于 leaderboard（"未被访谈但被提及最多" 应是交叉查询，不是泛排行榜）
+    """
     q = question.strip()
-    
-    for detector in [_detect_leaderboard, _detect_edge, _detect_path,
-                     _detect_cross_query, _detect_list_communities,
+
+    for detector in [_detect_path, _detect_cross_query,
+                     _detect_leaderboard, _detect_edge, _detect_list_communities,
                      _detect_community, _detect_story_path, _detect_author,
                      _detect_interview_status, _detect_stats]:
         result = detector(q)
         if result is not None:
             return result
-    
+
     # 默认：搜索作家
     return {'cmd': 'search', 'name': q.strip('？?吗 ')}
 
@@ -305,10 +384,25 @@ def format_result(cmd: str, result: dict) -> str:
 - 社群：#{node.get('community_id', 0)}（排名 {node.get('community_rank', 'N/A')}）
 - 艺术分类：{node.get('art_category_label', '未分类')}"""
         elif catalog_info:
-            return f"""📚 搜索结果：不在图谱中，但在访谈目录中找到「{catalog_info.get('name_zh') or catalog_info.get('name_en')}」
+            cn_name = catalog_info.get('name_zh') or catalog_info.get('name_en')
+            parts = []
+            if catalog_info.get('series'):
+                parts.append(f"系列：{catalog_info.get('series')}")
+            if catalog_info.get('number'):
+                parts.append(f"编号：{catalog_info.get('number')}")
+            if catalog_info.get('issue_season_year'):
+                issue_label = f"期号：{catalog_info.get('issue_season_year')}"
+                if catalog_info.get('issue_number'):
+                    issue_label += f"（第 {catalog_info.get('issue_number')} 期）"
+                parts.append(issue_label)
+            elif catalog_info.get('year'):
+                parts.append(f"年份：{catalog_info.get('year')}")
+            url = catalog_info.get('url')
+            bullets = "\n".join(f"- {p}" for p in parts) if parts else "- 年份：N/A"
+            link_line = f"\n- 🔗 原文：{url}" if url else ""
+            return f"""📚 搜索结果：不在图谱中，但在访谈目录中找到「{cn_name}」
 
-- 访谈系列：{catalog_info.get('series', 'N/A')}
-- 出版年份：{catalog_info.get('year', 'N/A')}"""
+{bullets}{link_line}"""
         else:
             return f"❌ 未找到「{result.get('query', result.get('resolved_name', ''))}」\n\n该作家既不在关系图谱中，也不在《巴黎评论》访谈目录里。"
     
@@ -323,11 +417,34 @@ def format_result(cmd: str, result: dict) -> str:
         lines.append("")
         
         if has_cn:
+            # 原刊信息优先取 catalog_info（顶层目录记录），其次取 node.interview
+            ci = catalog_info or {}
+            if not ci.get('series') and node and isinstance(node.get('interview'), dict):
+                ci = node.get('interview') or ci
+            series = ci.get('series')
+            number = ci.get('number')
+            issue_season_year = ci.get('issue_season_year')
+            issue_number = ci.get('issue_number')
+            cat_url = ci.get('url')
+
             if interview_count > 1:
                 lines.append(f"✅ 已收录中文版（共 {interview_count} 篇）：")
             else:
                 lines.append(f"✅ 已收录中文版：《{result.get('chinese_book', 'N/A')}》")
-            
+
+            # 原刊信息行（series + number + 期号）— 补 issue 内容
+            if series or number:
+                parts = []
+                if series:
+                    parts.append(f"系列：{series}")
+                if number:
+                    parts.append(f"编号：{number}")
+                if issue_season_year:
+                    parts.append(f"期号：{issue_season_year}（第 {issue_number} 期）" if issue_number else f"期号：{issue_season_year}")
+                lines.append(f"   🏷  原刊：{' · '.join(parts)}")
+                if cat_url:
+                    lines.append(f"   🔗 原文：{cat_url}")
+
             if all_interviews:
                 for i, iv in enumerate(all_interviews):
                     book = iv.get('book', 'N/A')
@@ -659,6 +776,17 @@ def main():
         print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     else:
         print(format_result(cmd, result))
+        # 字段自检：interview-status 必须在输出前校验字段完整性（v2.1.3）
+        if cmd == 'interview-status':
+            missing = _self_check_interview_status(result)
+            if missing:
+                warn_lines = [
+                    '',
+                    '⚠️  [字段自检 v2.1.3] 以下字段缺失，建议核对：',
+                    '   ' + '、'.join(missing),
+                    '   这可能是 Worker 端数据缺失，请反馈给开发者。',
+                ]
+                print('\n'.join(warn_lines), file=sys.stderr)
         # 自动检查更新（带每日缓存）
         try:
             from check_update import auto_check_update

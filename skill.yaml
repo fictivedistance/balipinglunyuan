@@ -1,6 +1,6 @@
 name: 巴黎评论员
 display_name: Paris Review Analyst · 巴黎评论员
-version: 2.1.0
+version: 2.1.2
 description: |
   《巴黎评论》作家关系网智能查询技能。基于简体中文版《巴黎评论》系列的
   作家关系知识图谱，支持自然语言查询访谈状态、作家关系、路径发现、
@@ -79,12 +79,35 @@ dependencies:
   python: ">=3.8"
   packages: []
 
+# 发布包控制 (v2.1.3) — tests/ 不随 skill 包分发
+distribution:
+  include:
+    - SKILL.md
+    - references/
+    - scripts/
+    - data/
+    - skill.yaml
+    - README.md
+    - INSTALL.md
+    - NOTICE
+    - LICENSE
+    - LICENSE.data
+    - DATA_LICENSE
+    - requirements.txt
+  exclude:
+    - tests/             # 回归测试仅供开发者 + CI
+    - .github/           # CI workflow 仅供开发者
+    - "*.pyc"
+    - "__pycache__/"
+    - "*.bak"
+    - "*.tmp"
+    - ".DS_Store"
+
 # 数据文件 — v2.0+ 改为 API 模式，skill 包内不含数据
 data:
   - source: cloudflare-kv
     namespace: PARIS_DATA_KV
-    api: https://paris-network-query-api.theparisreviewchina.workers.dev
-    description: 作家关系图谱数据存储在 Cloudflare KV，通过 Worker API 查询
+    description: 作家关系图谱数据存储在 Cloudflare KV，通过 Worker API 查询。API 地址由用户在安装后可自行配置。
 
 # 安装方式
 install:

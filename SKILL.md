@@ -23,8 +23,7 @@ Use for Paris Network / 《巴黎评论》作家关系网查询。
 - **No local data file** — skill 包不含数据，查询走 Cloudflare Worker API
 - Worker 从 KV 读取数据，只返回查询结果，不暴露全量数据
 - 离线降级：最近查询结果缓存到 `~/.cache/巴黎评论员/`，API 不可达时降级使用
-- API 地址：`https://paris-network-query-api.theparisreviewchina.workers.dev/api/query`
-- 可通过环境变量 `PARIS_API_BASE` 覆盖 API 地址
+- 通过环境变量 `PARIS_API_BASE` 配置 API 地址（默认值见脚本 `paris_network_query.py`）
 
 ## Data source
 
@@ -78,7 +77,7 @@ python3 skills/巴黎评论员/scripts/paris_network_query.py list-communities
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PARIS_API_BASE` | `https://paris-network-query-api.theparisreviewchina.workers.dev` | API 地址 |
+| `PARIS_API_BASE` | Worker API 地址（默认值见 `paris_network_query.py`） | 可通过环境变量覆盖 |
 | `PARIS_API_TIMEOUT` | `15` | 请求超时（秒） |
 | `PARIS_CACHE_DIR` | `~/.cache/巴黎评论员` | 离线缓存目录 |
 
@@ -89,6 +88,63 @@ python3 skills/巴黎评论员/scripts/paris_network_query.py list-communities
 | `shortest-path` | `name_a`, `name_b` | BFS 最短路径，返回路径节点 + 路径上的边 |
 | `cross-query` | `type`, `top` | 交叉关联查询，type 可选：`uninterviewed_most_mentioned` / `interviewed_but_isolated` / `cross_community_bridges` / `positive_vs_negative` |
 | `list-communities` | — | 列出全部社群 + 成员人数 |
+
+## Interview-status output field checklist (v2.1.3 自检清单)
+
+**为什么需要：** v2.1.2 bug 教训——agent 处理 interview-status 输出时，如果发现字段缺失，倾向于凭印象补全而不调脚本，于是把残缺输出当真。本节是给所有 agent（Claude/Codex/M3 等）的硬性字段清单，**不可跳过**。
+
+### has_chinese_interview=True 时（中文版收录）
+
+调用 `interview-status` 后，**必须展示且校验以下字段**（缺一即不完整）：
+
+| # | 字段路径 | 来源 | 必填 | 展示示例 |
+|---|---|---|---|---|
+| 1 | `catalog_info.series` | KV catalog | ✅ | The Art of Poetry |
+| 2 | `catalog_info.number` | KV catalog | ✅ | No. 17 |
+| 3 | `catalog_info.issue_season_year` | KV catalog | ✅ | Spring 1974 |
+| 4 | `catalog_info.issue_number` | KV catalog | ✅ | 57 |
+| 5 | `catalog_info.url` | KV catalog | ✅ | https://www.theparisreview.org/... |
+| 6 | `chinese_book` | KV author_info | ✅ | 《巴黎评论·作家访谈 1》 |
+| 7 | `all_interviews[].translator` | KV author_info | ✅ | XXX |
+| 8 | `all_interviews[].interviewer` | KV author_info | ✅ | XXX |
+
+**回落规则：** 如果 `catalog_info.series` 为空且 `node.interview.series` 有值，用 `node.interview` 替代。
+
+### 仅 catalog 命中（无中文版收录）
+
+| # | 字段路径 | 必填 |
+|---|---|---|
+| 1 | `catalog_info.series` | ✅ |
+| 2 | `catalog_info.number` | ✅ |
+| 3 | `catalog_info.year` | ✅ |
+| 4 | `catalog_info.url` | ✅ |
+| 5 | 显示「📕 尚未出版中文版」 | ✅ |
+
+### 自检失败处理
+
+`scripts/nl_interface.py` 内置字段自检（v2.1.3 起）：
+
+- 检测到字段缺失 → 往 stderr 输出 `⚠️ [字段自检 v2.1.3] 以下字段缺失：...`
+- agent 收到此告警 → **不要凭印象补全**，应：
+  1. 明确告知用户「该字段数据缺失」
+  2. 把告警内容附在回复末尾，便于老巴/开发者排查
+  3. 在 PROGRESS.md 记一笔（如果跑在 Claude Code / Codex 环境）
+
+**禁止规则（v2.1.3 新增）：**
+- ❌ 不要在字段缺失时编造 series / number / year / url
+- ❌ 不要把 `node.interview` 当成 catalog_info（仅回落用，不可混淆）
+- ❌ 不要在 has_chinese_interview=True 时只输出「译者/采访者/年份」（v2.1.2 bug 重现）
+
+### 跨 agent 一致性提示
+
+不同 agent 处理本节的方式不同：
+- **Claude 系**：自动遵守，自检失败时报错清晰
+- **Codex / GPT 系**：可能跳过 self-check，需在 prompt 里显式提到"必须按 SKILL.md 自检清单执行"
+- **OpenClaw (M3/DeepSeek)**：脚本驱动，自检在 `nl_interface.py` 内强制执行，最可靠
+
+若用户反馈「字段又丢了」，先查 `tests/regression/` 下的回归用例是否更新，再补 SKILL.md 触发词。
+
+---
 
 ## Interview-status answer rule (v2 固化版)
 
@@ -338,7 +394,8 @@ node scripts/upload_kv.js --html ../dist_public/index.html --namespace <KV_NAMES
 npx wrangler deploy
 
 # 4. 验证
-curl "https://paris-network-query-api.theparisreviewchina.workers.dev/api/query?action=version"
+# 用 PARIS_API_BASE 环境变量或修改脚本中的默认值后，运行：
+# curl "$PARIS_API_BASE/api/query?action=version"
 ```
 
 
