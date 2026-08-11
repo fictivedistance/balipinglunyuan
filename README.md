@@ -110,7 +110,7 @@ cd balipinglunyuan
 python3 scripts/nl_interface.py "海明威和福克纳有什么关系"
 ```
 
-> **注意：** v2.0 起需要联网访问 API。默认 API 地址为 `https://paris-network-query-api.theparisreviewchina.workers.dev`，可通过环境变量 `PARIS_API_URL` 覆盖。API 不可达时自动降级到本地缓存。
+> **注意：** v2.0 起需要联网访问 API。默认 API 地址为 `https://api2.fictivedistance.com`，可通过环境变量 `PARIS_API_BASE` 覆盖。API 不可达时自动降级到本地缓存。
 
 ### 下载指定 tag 的 ZIP
 
@@ -317,7 +317,7 @@ python3 scripts/paris_network_query.py list-communities
  - 2707 条关系边（含原文证据）
  - 454 篇《巴黎评论》官方访谈目录
  - 191 位已出版中文版的作家信息
-- **API 地址**：`https://paris-network-query-api.theparisreviewchina.workers.dev`
+- **API 地址**：`https://api2.fictivedistance.com`
 - **限流**：每 IP 每分钟 30 次请求
 - **离线缓存**：API 不可达时降级到本地缓存（`~/.cache/巴黎评论员/`，TTL 1 小时）
 

@@ -1,3 +1,34 @@
+## v2.2.2 (2026-08-11)
+
+### Bug 修复：Worker API 国内不可达
+
+**触发来源：** 老巴反馈 Skill 无法正常使用
+
+**问题：** Worker API 默认地址 `paris-network-query-api.theparisreviewchina.workers.dev` 在国内被墙，DNS 可解析但 TCP 连接超时，导致所有查询失败。
+
+**根因：** Cloudflare Workers 的 `*.workers.dev` 域名在国内被封锁。
+
+**修复：**
+- 在 `fictivedistance.com` zone 下新增 `api2` 子域（DNS proxied）
+- Worker 绑定自定义域路由 `api2.fictivedistance.com/api/*`
+- 脚本默认 API_BASE 从 `workers.dev` 改为 `https://api2.fictivedistance.com`
+- `workers_dev = true` 保留（海外/代理用户兜底）
+
+**改动文件：**
+
+| 文件 | 改动 |
+|------|------|
+| `scripts/paris_network_query.py` | API_BASE 默认值改为 `https://api2.fictivedistance.com` |
+| `README.md` | 两处 API 地址引用更新 |
+| `references/data-contract.md` | API endpoint 地址更新 |
+| `skill.yaml` | 版本号 2.2.0 → 2.2.2 |
+
+**验证：** `validate_skill_v1.py` 69/69 通过，0 失败，1 警告（预期）
+
+**国内直连测试：** `api2.fictivedistance.com` 1.7 秒返回 HTTP 200（旧地址 TCP 超时）
+
+---
+
 ## v2.2.1 (2026-08-10)
 
 ### Bug 修复：nl_interface 意图识别与输出格式（4 项）

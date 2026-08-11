@@ -4,7 +4,7 @@
 
 - Data source: Paris Network public HTML → Cloudflare KV → Worker API
 - No local data file in skill package (v2.0+)
-- API endpoint: `https://paris-network-query-api.theparisreviewchina.workers.dev/api/query`
+- API endpoint: `https://api2.fictivedistance.com/api/query`
 - Data in KV: graph, catalog_records, author_info, leaderboard, story_paths, name_map, meta
 - Worker loads from KV on cold start, caches 5 min at instance level
 

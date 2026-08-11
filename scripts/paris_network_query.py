@@ -20,7 +20,7 @@ Usage:
   python3 paris_network_query.py story-path --key 拉美
 
 Environment variables:
-  PARIS_API_BASE — override API base URL (default: https://paris-network-query-api.theparisreviewchina.workers.dev)
+  PARIS_API_BASE — override API base URL (default: https://api2.fictivedistance.com)
   PARIS_API_TIMEOUT — request timeout in seconds (default: 15)
   PARIS_CACHE_DIR — override cache directory
 """
@@ -33,7 +33,7 @@ from urllib.error import URLError, HTTPError
 # ── 配置 ──
 API_BASE = os.environ.get(
     'PARIS_API_BASE',
-    'https://paris-network-query-api.theparisreviewchina.workers.dev'
+    'https://api2.fictivedistance.com'
 )
 API_TIMEOUT = int(os.environ.get('PARIS_API_TIMEOUT', '15'))
 CACHE_DIR = Path(os.environ.get(
