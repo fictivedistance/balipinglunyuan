@@ -365,6 +365,12 @@ python3 scripts/validate_skill_v1.py
 
 ## 更新日志
 
+### v2.2.2 (2026-08-11)
+- 修复 Worker API 国内不可达：`*.workers.dev` 域名被墙，TCP 超时
+- 绑定自定义域 `api2.fictivedistance.com`，国内直连 1.7s 返回
+- 脚本默认 API 地址改为 `https://api2.fictivedistance.com`
+- `workers_dev = true` 保留（海外/代理兜底）
+
 ### v2.2.1 (2026-08-10)
 - 修复 shortest-path 不认「X 到 Y」句式（误判为 search）
 - 修复 edge 查询丢弃反向边（has_direct_edge=False 时直接 return）

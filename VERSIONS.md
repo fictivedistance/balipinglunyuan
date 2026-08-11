@@ -2,30 +2,16 @@
 
 ### Bug 修复：Worker API 国内不可达
 
-**触发来源：** 老巴反馈 Skill 无法正常使用
-
-**问题：** Worker API 默认地址 `paris-network-query-api.theparisreviewchina.workers.dev` 在国内被墙，DNS 可解析但 TCP 连接超时，导致所有查询失败。
-
-**根因：** Cloudflare Workers 的 `*.workers.dev` 域名在国内被封锁。
+**问题：** Worker API 默认地址 `*.workers.dev` 在国内被墙，DNS 可解析但 TCP 连接超时，导致所有查询失败。
 
 **修复：**
-- 在 `fictivedistance.com` zone 下新增 `api2` 子域（DNS proxied）
-- Worker 绑定自定义域路由 `api2.fictivedistance.com/api/*`
-- 脚本默认 API_BASE 从 `workers.dev` 改为 `https://api2.fictivedistance.com`
-- `workers_dev = true` 保留（海外/代理用户兜底）
+- 绑定自定义域 `api2.fictivedistance.com`（Cloudflare proxied）
+- 脚本默认 API_BASE 改为 `https://api2.fictivedistance.com`
+- `workers_dev = true` 保留（海外/代理兜底）
 
-**改动文件：**
+**改动文件：** `paris_network_query.py` / `README.md` / `data-contract.md` / `skill.yaml`
 
-| 文件 | 改动 |
-|------|------|
-| `scripts/paris_network_query.py` | API_BASE 默认值改为 `https://api2.fictivedistance.com` |
-| `README.md` | 两处 API 地址引用更新 |
-| `references/data-contract.md` | API endpoint 地址更新 |
-| `skill.yaml` | 版本号 2.2.0 → 2.2.2 |
-
-**验证：** `validate_skill_v1.py` 69/69 通过，0 失败，1 警告（预期）
-
-**国内直连测试：** `api2.fictivedistance.com` 1.7 秒返回 HTTP 200（旧地址 TCP 超时）
+**验证：** 69/69 通过；国内直连 1.7s 返回 HTTP 200
 
 ---
 
@@ -57,7 +43,7 @@
 - 元数据：版本号、CI workflow 全部对齐 v2.2.0
 - commit 历史：去除 `Co-Authored-By: Claude` trailer（GitHub Contributors 列表只保留 fictivedistance）
 
-**给老巴的提醒：**
+**备注：**
 - 如果以后改 SKILL/scripts，version 号要同步改 skill.yaml（之前 v2.1.3 漏改，v2.2.0 一起补上）
 
 ---
@@ -66,7 +52,7 @@
 
 ### 跨 agent 一致性强化 + 回归测试基础设施
 
-**背景：** 老巴问"为什么同一个 skill 在 codex / claude code / openclaw 表现不同"，结论是 skill 是 prompt 文本不是程序，不同 agent 行为差异无法靠 SKILL.md 文本杜绝。改为三管齐下：
+**背景：** 跨 agent 评估发现同一个 skill 在 codex / claude code / openclaw 表现不同，结论是 skill 是 prompt 文本不是程序，不同 agent 行为差异无法靠 SKILL.md 文本杜绝。改为三管齐下：
 
 1. **脚本层硬性自检** — `scripts/nl_interface.py` 新增 `_self_check_interview_status()`，interview-status 输出前校验字段完整性，缺失字段往 stderr 告警（不静默）
 2. **SKILL.md 字段自检清单** — 新增 "Interview-status output field checklist (v2.1.3)" 段，列出所有必填字段 + 回落规则 + 跨 agent 处理建议
@@ -88,7 +74,7 @@
 - 字段完整性测试（offline）：1/1 通过（fixture 覆盖海明威；其余需在线跑）
 - v2.1.2 bug（奥登缺 series/number/issue/url）：脚本层自检已拦住，stderr 告警
 
-**给老巴的建议：**
+**后续建议：**
 - CI 接入后每次 PR 自动跑，避免再被字段缺失咬到
 - `tests/snapshots/` 留空待人工 diff，发版前补上当前输出快照做 baseline
 
