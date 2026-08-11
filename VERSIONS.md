@@ -1,3 +1,19 @@
+## v2.2.3 (2026-08-11)
+
+### 新功能：格式化下沉 + FMT_LOCK 输出锁
+
+**目标：** 解决跨 Agent 输出不一致问题——不同模型调用同一 skill 时，回复格式差异大（表格被简化为短文本、字段被省略等）。
+
+**改动：**
+- `nl_interface.py` 的 `format_result()` 全面重写，所有 9 个命令（stats / search / interview-status / author / leaderboard / edge / community / shortest-path / cross-query / list-communities / story-path）统一输出 markdown 表格格式
+- 脚本输出开头带 `[[FMT_LOCK]]` 标记
+- SKILL.md 顶部加硬指令段：看到 `[[FMT_LOCK]]` 标记必须原样转发，不得改写
+- 修复 `_extract_two_names()` 边缘 bug：「X 对 Y 有什么看法吗」类输入 now 正确清洗出姓名
+
+**Commit：** 待提交
+
+---
+
 ## v2.2.2 (2026-08-11)
 
 ### Bug 修复：Worker API 国内不可达

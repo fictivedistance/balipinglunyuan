@@ -117,7 +117,8 @@ def _extract_two_names(q: str) -> tuple[str, str] | None:
     q_clean = q
     for suffix in ['有什么关系', '的关系', '有联系吗', '有关系吗', '有关系', '有联系',
                    '怎么看', '如何看', '的看法', '怎么评价', '如何评价',
-                   '的评价', '最短路径', '最短几步', '提到过', '提到',
+                   '的评价', '有什么看法', '有什么评价', '怎么看吗', '评价吗',
+                   '最短路径', '最短几步', '提到过', '提到',
                    '看法', '评价', '吗', '呢', '？', '?']:
         if q_clean.endswith(suffix):
             q_clean = q_clean[:-len(suffix)]
@@ -135,6 +136,11 @@ def _extract_two_names(q: str) -> tuple[str, str] | None:
             # 清理尾部疑问词 / 助词
             name2 = re.sub(r'[了吗？?呢。]+$', '', name2).strip()
             name2 = re.sub(r'^[的]+', '', name2).strip()
+            # 清理「有什么看法吗」「有什么评价呢」这类混合后缀的残余（包括中段出现的“有什么看法”）
+            tail_noise = r'(有什么看法|有什么评价|怎么看|怎么评价|的看法|的评价|看法|评价)'
+            name2 = re.sub(tail_noise, '', name2).strip()
+            # 尾部疑问词再清一次（去掉以后又会露出）
+            name2 = re.sub(r'[了吗？?呢。]+$', '', name2).strip()
             if name1 and name2 and len(name1) > 1 and len(name2) > 1:
                 return (name1, name2)
 
@@ -368,302 +374,389 @@ def detect_command(question: str) -> dict:
 # ============================================================
 
 def format_result(cmd: str, result: dict) -> str:
-    """把 JSON 结果转换为人类可读的中文回答。"""
-    
+    """把 JSON 结果转换为人类可读的中文回答。
+
+    v2.2.3 — 格式化逻辑下沉，脚本直接输出最终 markdown 文本。
+    输出开头带 [[FMT_LOCK]] 标记，SKILL.md 要求 agent 原样转发，不得改写。
+    """
+    FMT_LOCK = '[[FMT_LOCK]]\n'
+
     if not result.get('ok', True) and result.get('error'):
-        return f"❌ 查询失败：{result.get('error', '未知错误')}\n\n{result.get('hint', '')}"
-    
+        return f"{FMT_LOCK}❌ 查询失败：{result.get('error', '未知错误')}\n\n{result.get('hint', '')}"
+
     if cmd == 'stats':
         stats = result.get('stats', result)
-        return f"""📊 巴黎评论作家关系网统计
+        return (
+            f"{FMT_LOCK}**《巴黎评论》作家关系网统计**\n\n"
+            "| 项目 | 数值 |\n"
+            "|------|------|\n"
+            f"| **总作家数** | {stats.get('nodes', 'N/A')} 位 |\n"
+            f"| **总关系边数** | {stats.get('links', 'N/A')} 条 |\n"
+            f"| **访谈目录收录** | {stats.get('catalog_records', 'N/A')} 位 |\n"
+            f"| **中文版已收录** | {stats.get('authors_with_chinese_interview', 'N/A')} 位 |"
+        )
 
-- 总作家数：{stats.get('nodes', 'N/A')} 位
-- 总关系边数：{stats.get('links', 'N/A')} 条
-- 访谈目录收录：{stats.get('catalog_records', 'N/A')} 位
-- 中文版已收录：{stats.get('authors_with_chinese_interview', 'N/A')} 位"""
-    
     elif cmd == 'search':
         # API 的 interview-status 返回既包含图谱也包含访谈信息，用于搜索展示
         node = result.get('node')
         catalog_info = result.get('catalog_info')
-        
-        if node:
-            return f"""🔍 搜索结果：找到「{result['resolved_name']}」
 
-- 身份：{node.get('group', 'N/A')}
-- 总连接数：{node.get('degree', 0)}
-- 社群：#{node.get('community_id', 0)}（排名 {node.get('community_rank', 'N/A')}）
-- 艺术分类：{node.get('art_category_label', '未分类')}"""
+        if node:
+            return (
+                f"{FMT_LOCK}**搜索结果：在关系图谱中找到「{result['resolved_name']}」**\n\n"
+                "| 项目 | 内容 |\n"
+                "|------|------|\n"
+                f"| **身份** | {node.get('group', 'N/A')} |\n"
+                f"| **总连接数** | {node.get('degree', 0)} |\n"
+                f"| **社群** | #{node.get('community_id', 0)}（{node.get('community_name', '—')}）|\n"
+                f"| **社群内排名** | 第 {node.get('community_rank', 'N/A')} 位 |\n"
+                f"| **艺术分类** | {node.get('art_category_label', '未分类')} |"
+            )
         elif catalog_info:
             cn_name = catalog_info.get('name_zh') or catalog_info.get('name_en')
-            parts = []
-            if catalog_info.get('series'):
-                parts.append(f"系列：{catalog_info.get('series')}")
-            if catalog_info.get('number'):
-                parts.append(f"编号：{catalog_info.get('number')}")
-            if catalog_info.get('issue_season_year'):
-                issue_label = f"期号：{catalog_info.get('issue_season_year')}"
-                if catalog_info.get('issue_number'):
-                    issue_label += f"（第 {catalog_info.get('issue_number')} 期）"
-                parts.append(issue_label)
-            elif catalog_info.get('year'):
-                parts.append(f"年份：{catalog_info.get('year')}")
-            url = catalog_info.get('url')
-            bullets = "\n".join(f"- {p}" for p in parts) if parts else "- 年份：N/A"
-            link_line = f"\n- 🔗 原文：{url}" if url else ""
-            return f"""📚 搜索结果：不在图谱中，但在访谈目录中找到「{cn_name}」
-
-{bullets}{link_line}"""
+            series = catalog_info.get('series') or '—'
+            number = catalog_info.get('number') or '—'
+            issue_sy = catalog_info.get('issue_season_year') or catalog_info.get('year') or '—'
+            issue_num = catalog_info.get('issue_number')
+            issue_str = f"{issue_sy}（第 {issue_num} 期）" if issue_num else issue_sy
+            url = catalog_info.get('url') or '—'
+            return (
+                f"{FMT_LOCK}**搜索结果：不在图谱中，但在访谈目录中找到「{cn_name}」**\n\n"
+                "| 项目 | 内容 |\n"
+                "|------|------|\n"
+                f"| **访谈系列** | {series} |\n"
+                f"| **访谈编号** | {number} |\n"
+                f"| **原刊期号** | {issue_str} |\n"
+                f"| **原文链接** | {url} |"
+            )
         else:
-            return f"❌ 未找到「{result.get('query', result.get('resolved_name', ''))}」\n\n该作家既不在关系图谱中，也不在《巴黎评论》访谈目录里。"
+            return (
+                f"{FMT_LOCK}**未找到「{result.get('query', result.get('resolved_name', ''))}」**\n\n"
+                "该作家既不在关系图谱中，也不在《巴黎评论》访谈目录里。"
+            )
     
     elif cmd == 'interview-status':
+        # v2.2.3 — 格式化逻辑下沉，脚本直接输出 SKILL.md 模板（不依赖 agent 二次加工）
+        # 四种状态：A1（有中文版）、A2（被访谈但无中文版）、B（在图谱但未被访谈）、C（都不在）
         has_cn = result.get('has_chinese_interview', False)
         node = result.get('node')
         catalog_info = result.get('catalog_info')
         interview_count = result.get('interview_count', 0)
         all_interviews = result.get('all_interviews', [])
-        
-        lines = [f"「{result['resolved_name']}」访谈状态"]
-        lines.append("")
-        
-        if has_cn:
-            # 原刊信息优先取 catalog_info（顶层目录记录），其次取 node.interview
+        resolved = result.get('resolved_name', result.get('query', ''))
+
+        def _ci_or_node_interview():
+            """优先 catalog_info，series 为空时回落 node.interview。"""
             ci = catalog_info or {}
             if not ci.get('series') and node and isinstance(node.get('interview'), dict):
                 ci = node.get('interview') or ci
-            series = ci.get('series')
-            number = ci.get('number')
-            issue_season_year = ci.get('issue_season_year')
-            issue_number = ci.get('issue_number')
-            cat_url = ci.get('url')
+            return ci
 
-            if interview_count > 1:
-                lines.append(f"✅ 已收录中文版（共 {interview_count} 篇）：")
+        ci = _ci_or_node_interview()
+        series = ci.get('series') or '—'
+        number = ci.get('number') or '—'
+        issue_season_year = ci.get('issue_season_year') or ci.get('year') or '—'
+        issue_number = ci.get('issue_number')
+        cat_url = ci.get('url')
+
+        if has_cn:
+            # 状态 A1：有中文版收录
+            head = (
+                f"{FMT_LOCK}**是的，「{resolved}」被《巴黎评论》访谈过，且已被简体中文版收录。**"
+                if interview_count <= 1
+                else f"{FMT_LOCK}**是的，「{resolved}」被《巴黎评论》访谈过，且已被简体中文版收录（共 {interview_count} 篇）。**"
+            )
+            lines = [head, ""]
+
+            if issue_number and issue_number != '—':
+                issue_str = f"{issue_season_year}（第 {issue_number} 期）"
             else:
-                lines.append(f"✅ 已收录中文版：《{result.get('chinese_book', 'N/A')}》")
+                issue_str = issue_season_year
+            url_str = cat_url if cat_url else '—'
 
-            # 原刊信息行（series + number + 期号）— 补 issue 内容
-            if series or number:
-                parts = []
-                if series:
-                    parts.append(f"系列：{series}")
-                if number:
-                    parts.append(f"编号：{number}")
-                if issue_season_year:
-                    parts.append(f"期号：{issue_season_year}（第 {issue_number} 期）" if issue_number else f"期号：{issue_season_year}")
-                lines.append(f"   🏷  原刊：{' · '.join(parts)}")
-                if cat_url:
-                    lines.append(f"   🔗 原文：{cat_url}")
+            lines.append("| 项目 | 内容 |")
+            lines.append("|------|------|")
+            lines.append(f"| **访谈编号** | {series} {number} |")
+            lines.append(f"| **原刊期号** | {issue_str} |")
+            lines.append(f"| **简体中文版收录** | ✅ 已收录 |")
+            lines.append(f"| **图谱状态** | ✅ 该作家已在《巴黎评论》作家关系图谱中 |" if node else f"| **图谱状态** | ❌ 未在图谱中 |")
+            lines.append(f"| **原文链接** | {url_str} |")
+            lines.append("")
 
             if all_interviews:
                 for i, iv in enumerate(all_interviews):
                     book = iv.get('book', 'N/A')
-                    translator = iv.get('translator', 'N/A')
-                    interviewer = iv.get('interviewer', 'N/A')
-                    year = iv.get('year', 'N/A')
-                    if interview_count > 1:
-                        lines.append(f"   [{i+1}] 《{book}》— 译者：{translator}，采访者：{interviewer}，年份：{year}")
-                    else:
-                        lines.append(f"   译者：{translator}")
-                        lines.append(f"   采访者：{interviewer}")
-                        lines.append(f"   年份：{year}")
+                    translator = iv.get('translator') or '—'
+                    interviewer = iv.get('interviewer') or '—'
+                    year = iv.get('year') or '—'
+                    lines.append(f"- 《{book}》 · 译者：{translator} · 采访者：{interviewer} · 年份：{year}")
             else:
-                lines.append(f"   译者：{result.get('translator', 'N/A')}")
-                lines.append(f"   采访者：{result.get('interviewer', 'N/A')}")
-                lines.append(f"   年份：{result.get('year', 'N/A')}")
+                lines.append(f"- 《{result.get('chinese_book', 'N/A')}》 · 译者：{result.get('translator') or '—'} · 采访者：{result.get('interviewer') or '—'} · 年份：{result.get('year') or '—'}")
         elif catalog_info:
-            lines.append("✅ 被《巴黎评论》访谈过（英文版）")
-            lines.append(f"   期号：{catalog_info.get('number', 'N/A')}")
-            lines.append(f"   系列：{catalog_info.get('series', 'N/A')}")
-            lines.append(f"   年份：{catalog_info.get('year', 'N/A')}")
-            url = catalog_info.get('url', '')
-            if url:
-                lines.append(f"   链接：[The Paris Review 访谈原文]({url})")
+            # 状态 A2：被访谈过 + 无中文版
+            head = f"{FMT_LOCK}**是的，「{resolved}」被《巴黎评论》访谈过。**"
+            lines = [head, ""]
+            if issue_number and issue_number != '—':
+                issue_str = f"{issue_season_year}（第 {issue_number} 期）"
             else:
-                lines.append("   链接：N/A")
-            if not has_cn:
-                lines.append("")
-                lines.append("   📕 尚未出版中文版")
-        else:
-            lines.append("❌ 未被《巴黎评论》访谈过")
-        
-        if node:
+                issue_str = issue_season_year
+            url_str = cat_url if cat_url else '—'
+            lines.append("| 项目 | 内容 |")
+            lines.append("|------|------|")
+            lines.append(f"| **访谈编号** | {series} {number} |")
+            lines.append(f"| **原刊期号** | {issue_str} |")
+            lines.append(f"| **简体中文版收录** | ❌ 未收录 |")
+            lines.append(f"| **图谱状态** | ✅ 该作家已在《巴黎评论》作家关系图谱中 |" if node else f"| **图谱状态** | ❌ 未在图谱中 |")
+            lines.append(f"| **原文链接** | {url_str} |")
             lines.append("")
-            lines.append(f"📍 在关系图谱中：是（{node.get('degree', 0)} 条连接）")
-        
+            lines.append("📕 尚未出版中文版")
+        elif node and node.get('inDegree', 0) > 0:
+            # 状态 B：在图谱但未被访谈过
+            in_degree = node.get('inDegree', 0)
+            lines = [
+                f"{FMT_LOCK}**截至 2026 年 6 月 19 日，《巴黎评论》未访谈过你所查询的「{resolved}」。**",
+                "",
+                f"但「{resolved}」曾被《巴黎评论》受访作家提及，因而出现在当前的关系图谱中：",
+                "",
+                "| 项目 | 内容 |",
+                "|------|------|",
+                f"| **被提及次数** | {in_degree} 次 |",
+                f"| **图谱社群** | #{node.get('community_id', '—')}（{node.get('community_name', '—')}）|",
+                f"| **社群内排名** | 第 {node.get('community_rank', '—')} 位（社群共 {node.get('community_size', '—')} 人）|",
+                f"| **图谱位置** | ✅ 已在《巴黎评论》作家关系图谱中 |",
+            ]
+        else:
+            # 状态 C：未访谈过 + 不在图谱
+            lines = [
+                f"{FMT_LOCK}**截至 2026 年 6 月 19 日，《巴黎评论》未访谈过你所查询的「{resolved}」。**",
+                "",
+                f"「{resolved}」也暂时未被任何简体中文版《巴黎评论》系列已出版的受访作家提及或评价过，因而不在当前的关系图谱中。",
+            ]
+
+        # 标准结尾段（每次必出）
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+        lines.append("ℹ️ **关于《巴黎评论》作家关系图谱**")
+        lines.append("")
+        lines.append("这是一个可视化的文学知识网络，收录了数百位作家之间的引用、评价、影响等关系。你可以在以下地址访问完整的网络图谱并查看该作家的节点：")
+        lines.append("")
+        lines.append("🔗 [https://parisreviewnetwork.pages.dev/](https://parisreviewnetwork.pages.dev/)")
+        lines.append("")
+        lines.append("🔍 在图谱右上角搜索框输入作家中文名或英文名即可快速定位到该节点。")
+        lines.append("")
+        lines.append("图谱中每个节点代表一位作家，节点之间的连线代表他们之间存在某种文本关联（如 A 在访谈中提到过 B，或者 A 对 B 有正面/负面评价）。点击节点可以查看详细信息。")
+
         return "\n".join(lines)
     
     elif cmd == 'author':
         if not result.get('found', result.get('found_in_network')):
-            return f"未找到「{result.get('query', '')}」"
-        
+            return f"{FMT_LOCK}**未找到作家「{result.get('query', '')}」**"
+
         node = result.get('node', {})
         resolved = result.get('resolved_name', node.get('id', ''))
         in_edges = result.get('in_edges', [])
         out_edges = result.get('out_edges', [])
         in_count = len(in_edges)
         out_count = len(out_edges)
-        
-        lines = [resolved]
-        lines.append(f"被 {in_count} 位作家提及，自己提及了 {out_count} 位作家。")
+
+        # v2.2.3 — 表格化输出
+        lines = [f"{FMT_LOCK}**「{resolved}」详情**", ""]
+        lines.append("| 项目 | 数值 |")
+        lines.append("|------|------|")
+        lines.append(f"| **英文名** | {node.get('name_en', '—')} |")
+        lines.append(f"| **社群** | #{node.get('community_id', '—')}（{node.get('community_name', '—')}）|")
+        lines.append(f"| **社群内排名** | 第 {node.get('community_rank', '—')} 位（共 {node.get('community_size', '—')} 人）|")
+        lines.append(f"| **总连接数** | {node.get('degree', 0)}（被 {node.get('inDegree', 0)} 人提及，提及 {node.get('outDegree', 0)} 人）|")
+        lines.append(f"| **艺术分类** | {node.get('art_category_label', '—')} |")
         lines.append("")
-        
+
         if in_edges:
             pos = [e.get('source', '') for e in in_edges if e.get('type') == 'positive']
             neg = [e.get('source', '') for e in in_edges if e.get('type') == 'negative']
-            neu = [e.get('source', '') for e in in_edges if e.get('type') == 'neutral']
             if pos:
-                lines.append(f"正面评价来自：{'、'.join(pos[:5])}{'…' if len(pos) > 5 else ''}")
+                lines.append(f"**正面评价来自：**{'、'.join(pos[:8])}{'…' if len(pos) > 8 else ''}")
+                lines.append("")
             if neg:
-                lines.append(f"负面评价来自：{'、'.join(neg[:5])}{'…' if len(neg) > 5 else ''}")
+                lines.append(f"**负面评价来自：**{'、'.join(neg[:8])}{'…' if len(neg) > 8 else ''}")
+                lines.append("")
             if not pos and not neg:
-                lines.append(f"提及者包括：{'、'.join([e.get('source', '') for e in in_edges[:5]])}")
-        
+                neu = [e.get('source', '') for e in in_edges[:8]]
+                lines.append(f"**提及者：**{'、'.join(neu)}{'…' if len(in_edges) > 8 else ''}")
+                lines.append("")
+
         if out_edges:
-            lines.append("")
             out_pos = [e.get('target', '') for e in out_edges if e.get('type') == 'positive']
             out_neg = [e.get('target', '') for e in out_edges if e.get('type') == 'negative']
             if out_pos:
-                lines.append(f"他正面评价了：{'、'.join(out_pos[:5])}{'…' if len(out_pos) > 5 else ''}")
+                lines.append(f"**他正面评价了：**{'、'.join(out_pos[:8])}{'…' if len(out_pos) > 8 else ''}")
+                lines.append("")
             if out_neg:
-                lines.append(f"他负面评价了：{'、'.join(out_neg[:5])}{'…' if len(out_neg) > 5 else ''}")
-        
+                lines.append(f"**他负面评价了：**{'、'.join(out_neg[:8])}{'…' if len(out_neg) > 8 else ''}")
+
         return "\n".join(lines)
     
     elif cmd == 'leaderboard':
         entries = result.get('entries', result.get('leaderboard', []))
         sort_by = result.get('sort_by', 'degree')
-        
+
         sort_names = {
             'degree': '总连接数', 'inDegree': '被提及数', 'outDegree': '提及他人数',
             'pageRank': '影响力', 'betweenness': '中介中心性',
             'positiveIn': '正面评价数', 'negativeIn': '负面评价数', 'influenceIn': '影响关系数'
         }
-        
-        lines = [f"作家排行榜 — 按{sort_names.get(sort_by, sort_by)}排序"]
-        lines.append("")
-        
-        # 根据 sort_by 选取对应字段的值，而非总取 degree
+
+        # v2.2.3 — markdown 表格输出（不依赖 agent 二次加工）
+        lines = [f"{FMT_LOCK}**作家排行榜 — 按「{sort_names.get(sort_by, sort_by)}」排序（前 {len(entries)} 位）**", ""]
+        lines.append("| 排名 | 作家 | 数值 |")
+        lines.append("|------|------|------|")
+
         field_map = {
             'degree': 'degree', 'inDegree': 'inDegree', 'outDegree': 'outDegree',
             'pageRank': 'pageRank', 'betweenness': 'betweenness',
             'positiveIn': 'positiveIn', 'negativeIn': 'negativeIn', 'influenceIn': 'influenceIn'
         }
         value_field = field_map.get(sort_by, 'degree')
-        
+
         for item in entries:
-            rank = item.get('rank', '')
+            rank = item.get('rank', '—')
             wid = item.get('id', 'N/A')
             primary = item.get(value_field, item.get('degree', 0))
             # pageRank / betweenness 保留小数
             if value_field in ('pageRank', 'betweenness'):
                 primary = round(primary, 6)
-            lines.append(f"  {rank}. {wid} - {primary}")
-        
+            lines.append(f"| {rank} | {wid} | {primary} |")
+
         return "\n".join(lines)
     
     elif cmd == 'edge':
-        if not result.get('has_direct_edge'):
-            found = result.get('found_in_network', [False, False])
-            # 即使没有正向边，也检查是否有反向边
-            reverse_count = result.get('reverse_edge_count', 0)
-            if reverse_count > 0:
-                lines = [f"「{result['resolved_names'][1]}」对「{result['resolved_names'][0]}」有关系（反向）"]
-                lines.append(f"共 {reverse_count} 条反向关系")
-                lines.append("")
-                type_map = {'positive': '正面评价', 'negative': '负面评价', 'neutral': '中性提及'}
-                for e in result.get('reverse_edges', []):
-                    type_label = type_map.get(e.get('type', ''), e.get('type', ''))
-                    infl_label = '（影响关系）' if e.get('influence') else ''
-                    lines.append(f"{e.get('source', '')} 对 {e.get('target', '')} - {type_label}{infl_label}")
-                    if e.get('reason'):
-                        reason = e['reason']
-                        parts = reason.split(' | ') if ' | ' in reason else [reason]
-                        for part in parts:
-                            if '受访者对该作家表达正面评价' not in part and '受访者对该作家表达负面评价' not in part:
-                                lines.append(f"   原文：「{part}」")
-                return "\n".join(lines)
-            msg = f"「{result['resolved_names'][0]}」和「{result['resolved_names'][1]}」之间没有直接联系"
-            if not all(found):
-                msg += "\n（其中一位作家不在图谱中）"
-            return msg
-        
-        lines = [f"「{result['resolved_names'][0]}」与「{result['resolved_names'][1]}」的关系"]
-        lines.append(f"共 {result['edge_count']} 条直接关系")
-        lines.append("")
-        
+        # v2.2.3 — 格式化逻辑下沉，正向/反向边分别按 SKILL.md 模板输出
         type_map = {'positive': '正面评价', 'negative': '负面评价', 'neutral': '中性提及'}
+
+        def _format_edge(e: dict, label: str = '') -> list[str]:
+            """单条边的格式化。label 为空时自动从 source/target 生成。"""
+            src = e.get('source', '')
+            tgt = e.get('target', '')
+            t = e.get('type', '')
+            type_label = type_map.get(t, t)
+            infl = '（影响关系）' if e.get('influence') else ''
+            head = label if label else f"{FMT_LOCK}**{src} → {tgt}（{type_label}{infl}）**"
+            lines = [head]
+            reason = e.get('reason') or ''
+            if reason:
+                # reason 格式：「原文 | 说明」或纯原文
+                parts = reason.split(' | ', 1)
+                original = parts[0].strip()
+                explanation = parts[1].strip() if len(parts) > 1 else ''
+                # 过滤掉系统描述，跳到下一段
+                if original and '受访者对该作家表达' not in original:
+                    lines.append("")
+                    lines.append(f"> **原文**：「{original}」")
+                if explanation:
+                    lines.append(f"> ")
+                    lines.append(f"> **说明**：{explanation}")
+            return lines
+
+        name_a = result['resolved_names'][0]
+        name_b = result['resolved_names'][1]
+        lines = []
+
+        if not result.get('has_direct_edge'):
+            reverse_count = result.get('reverse_edge_count', 0)
+            found = result.get('found_in_network', [False, False])
+            if reverse_count > 0:
+                lines.append(f"{FMT_LOCK}**在《巴黎评论》作家关系图谱中，没有找到「{name_a}」在访谈中提及或评价「{name_b}」的记录。**")
+                lines.append("")
+                lines.append(f"不过，「{name_b}」在《巴黎评论》访谈中曾提到过「{name_a}」：")
+                lines.append("")
+                for e in result.get('reverse_edges', []):
+                    lines.extend(_format_edge(e))
+                    lines.append("")
+            else:
+                lines.append(f"{FMT_LOCK}**在《巴黎评论》作家关系图谱中，没有找到「{name_a}」和「{name_b}」之间的直接关联记录。**")
+                if not all(found):
+                    lines.append("")
+                    lines.append("（其中一位作家不在图谱中）")
+            return "\n".join(lines)
+
+        # 有正向边
         edges = result.get('edges', [])
-        for e in edges:
-            type_label = type_map.get(e.get('type', ''), e.get('type', ''))
-            infl_label = '（影响关系）' if e.get('influence') else ''
-            lines.append(f"{e.get('source', '')} 对 {e.get('target', '')} — {type_label}{infl_label}")
-            if e.get('reason'):
-                reason = e['reason']
-                parts = reason.split(' | ') if ' | ' in reason else [reason]
-                for part in parts:
-                    if '受访者对该作家表达正面评价' not in part and '受访者对该作家表达负面评价' not in part:
-                        lines.append(f"   原文：「{part}」")
-        
-        if result.get('reverse_edge_count', 0) > 0:
+        if edges:
+            lines.append(f"{FMT_LOCK}**「{name_a}」与「{name_b}」之间的关系（共 {len(edges)} 条直接关系）：**")
             lines.append("")
-            lines.append(f"反向（{result['resolved_names'][1]} → {result['resolved_names'][0]}）：{result['reverse_edge_count']} 条")
+            for e in edges:
+                lines.extend(_format_edge(e))
+                lines.append("")
+
+        if result.get('reverse_edge_count', 0) > 0:
+            lines.append("---")
+            lines.append("")
+            lines.append(f"**反向：「{name_b}」 → 「{name_a}」**（{result['reverse_edge_count']} 条）")
+            lines.append("")
             for e in result.get('reverse_edges', []):
-                type_label = type_map.get(e.get('type', ''), e.get('type', ''))
-                lines.append(f"{e.get('source', '')} 对 {e.get('target', '')} — {type_label}")
-                if e.get('reason'):
-                    lines.append(f"   原文：「{e['reason']}」")
-        
+                lines.extend(_format_edge(e))
+                lines.append("")
+
         return "\n".join(lines)
     
     elif cmd == 'community':
         if not result.get('found', result.get('ok', True)):
-            return f"未找到社群 #{result.get('community_id', '')}"
-        
+            return f"{FMT_LOCK}**未找到社群 #{result.get('community_id', '')}**"
+
         members = result.get('members', [])
         name = result.get('community_name', '')
-        header = f"社群「{name}」（#{result.get('community_id', '')}，共 {result.get('member_count', len(members))} 位成员）"
-        lines = [header, ""]
-        
-        for m in members[:15]:
-            lines.append(f"  {m.get('id', 'N/A')} — {m.get('degree', 0)} 条连接")
-        
-        if len(members) > 15:
-            lines.append(f"  …还有 {len(members) - 15} 位")
-        
+        # v2.2.3 — 表格化输出
+        lines = [f"{FMT_LOCK}**社群「{name}」**（#{result.get('community_id', '')}，共 {result.get('member_count', len(members))} 位成员）", ""]
+        lines.append("| 排名 | 作家 | 连接数 |")
+        lines.append("|------|------|--------|")
+
+        for i, m in enumerate(members[:20], 1):
+            lines.append(f"| {i} | {m.get('id', 'N/A')} | {m.get('degree', 0)} |")
+
+        if len(members) > 20:
+            lines.append("")
+            lines.append(f"_…还有 {len(members) - 20} 位成员_")
+
         return "\n".join(lines)
-    
+
     elif cmd == 'shortest-path':
         if not result.get('has_path'):
             names = result.get('resolved_names', ['', ''])
-            msg = f"「{names[0]}」和「{names[1]}」之间不存在连通路径"
+            msg = f"**「{names[0]}」和「{names[1]}」之间不存在连通路径**"
             found = result.get('found_in_network', [True, True])
             if not all(found):
-                msg += "\n（其中一位作家不在图谱中）"
+                msg += "\n\n（其中一位作家不在图谱中）"
             return msg
-        
+
         path = result.get('path', [])
         length = result.get('path_length', 0)
-        lines = [f"「{path[0]}」到「{path[-1]}」的最短路径（{length} 步）"]
+        # v2.2.3 — 路径 + 路径上边的表格
+        lines = [f"{FMT_LOCK}**「{path[0]}」 → 「{path[-1]}」的最短路径（{length} 步）**", ""]
+        lines.append("**路径：**")
         lines.append("")
-        lines.append("  " + " → ".join(path))
+        lines.append(" → ".join(path))
         lines.append("")
-        
+
         edges = result.get('edges', [])
         if edges:
             type_map = {'positive': '正面', 'negative': '负面', 'neutral': '中性'}
+            lines.append("**路径上的边：**")
+            lines.append("")
+            lines.append("| 起点 | 终点 | 类型 |")
+            lines.append("|------|------|------|")
             for e in edges:
                 direction = e.get('direction', 'forward')
                 if direction == 'forward':
-                    pair = f"{e.get('source', '')} → {e.get('target', '')}"
+                    src = e.get('source', '')
+                    tgt = e.get('target', '')
                 else:
-                    pair = f"{e.get('target', '')} → {e.get('source', '')}"
+                    src = e.get('target', '')
+                    tgt = e.get('source', '')
                 type_label = type_map.get(e.get('type', ''), e.get('type', ''))
-                lines.append(f"  {pair} ({type_label})")
-        
+                lines.append(f"| {src} | {tgt} | {type_label} |")
+
         return "\n".join(lines)
-    
+
     elif cmd == 'cross-query':
         entries = result.get('entries', [])
         qtype = result.get('type', '')
@@ -673,65 +766,84 @@ def format_result(cmd: str, result: dict) -> str:
             'cross_community_bridges': '跨社群桥接作家',
             'positive_vs_negative': '正负评价反差最大的作家',
         }
-        lines = [type_names.get(qtype, qtype)]
-        lines.append("")
-        
+        # v2.2.3 — 表格化输出
+        lines = [f"{FMT_LOCK}**{type_names.get(qtype, qtype)}**（前 {len(entries)} 位）", ""]
+        lines.append("| 排名 | 作家 | 指标 |")
+        lines.append("|------|------|------|")
         for item in entries:
-            rank = item.get('rank', '')
+            rank = item.get('rank', '—')
             wid = item.get('id', 'N/A')
             if qtype == 'uninterviewed_most_mentioned':
-                lines.append(f"  {rank}. {wid} — 被提及 {item.get('inDegree', 0)} 次")
+                metric = f"被提及 {item.get('inDegree', 0)} 次"
             elif qtype == 'positive_vs_negative':
                 pos = item.get('positiveIn', 0)
                 neg = item.get('negativeIn', 0)
-                lines.append(f"  {rank}. {wid} — 正面 {pos} / 负面 {neg}（净值 {'+' if item.get('net', 0) >= 0 else ''}{item.get('net', 0)}）")
+                net = item.get('net', 0)
+                sign = '+' if net >= 0 else ''
+                metric = f"正面 {pos} / 负面 {neg}（净值 {sign}{net}）"
             elif qtype == 'cross_community_bridges':
-                lines.append(f"  {rank}. {wid} — 跨 {item.get('cross_community_count', 0)} 个社群，提及 {item.get('outDegree', 0)} 人")
+                metric = f"跨 {item.get('cross_community_count', 0)} 个社群，提及 {item.get('outDegree', 0)} 人"
             else:
-                lines.append(f"  {rank}. {wid} — {item.get('degree', 0)} 条连接")
-        
+                metric = f"{item.get('degree', 0)} 条连接"
+            lines.append(f"| {rank} | {wid} | {metric} |")
+
         return "\n".join(lines)
-    
+
     elif cmd == 'list-communities':
         communities = result.get('communities', [])
         total = result.get('total_communities', len(communities))
-        lines = [f"共 {total} 个社群"]
-        lines.append("")
-        
+        # v2.2.3 — 表格化输出
+        lines = [f"{FMT_LOCK}**《巴黎评论》作家关系图谱共 {total} 个社群：**", ""]
+        lines.append("| 社群编号 | 社群名称 | 成员人数 |")
+        lines.append("|----------|----------|----------|")
         for c in communities:
-            name = c.get('community_name', '') or f"社群#{c.get('community_id', '')}"
-            lines.append(f"  {name} — {c.get('member_count', 0)} 位成员")
-        
+            cid = c.get('community_id', '—')
+            name = c.get('community_name', '') or f'社群#{cid}'
+            lines.append(f"| #{cid} | {name} | {c.get('member_count', 0)} |")
+
         return "\n".join(lines)
-    
+
     elif cmd == 'story-path_list':
-        # 需要调 API 获取路径列表——但 API 不提供列表接口
-        # 用 story-path key=0 作为兜底展示
-        lines = ["📚 故事路径查询"]
-        lines.append("")
-        lines.append("可用关键词：拉美、女性、现代主义、美国、诗歌、四种、立场、美学")
-        lines.append("使用方式：查询「第 0 条路径」或「拉美路径」")
+        # API 不提供路径列表接口，输出可用关键词
+        lines = [
+            f"{FMT_LOCK}**故事路径查询**",
+            "",
+            "可用关键词：拉美、女性、现代主义、美国、诗歌、四种、立场、美学",
+            "",
+            "使用方式：查询「第 0 条路径」或「拉美路径」",
+        ]
         return "\n".join(lines)
-    
+
     elif cmd == 'story-path':
         if not result.get('found', result.get('ok', True)):
-            return "❌ 未找到该路径"
-        
+            return f"{FMT_LOCK}**未找到该路径**"
+
         path = result.get('path', result)
-        lines = [f"📖 {path.get('title', '未命名')}"]
-        lines.append(f"   涉及 {path.get('node_count', len(path.get('nodes', [])))} 位作家，{path.get('edge_count', len(path.get('edges', [])))} 条关系")
-        lines.append("")
-        lines.append("👤 涉及作家：")
-        lines.append("   " + "、".join(path.get('nodes', [])))
-        
+        # v2.2.3 — 表格化输出
+        lines = [f"{FMT_LOCK}**{path.get('title', '未命名')}**", ""]
+        lines.append("| 项目 | 内容 |")
+        lines.append("|------|------|")
+        lines.append(f"| **涉及作家** | {len(path.get('nodes', []))} 位 |")
+        lines.append(f"| **关键关系** | {len(path.get('edges', []))} 条 |")
+        nodes = path.get('nodes', [])
+        if nodes:
+            lines.append("")
+            lines.append("**涉及作家：**")
+            lines.append("")
+            lines.append("、".join(nodes))
+
         edges = path.get('edges', [])
         if edges:
             lines.append("")
-            lines.append("🔗 关键关系：")
-            for e in edges[:5]:
-                type_label = {'positive': '👍', 'negative': '👎', 'neutral': '⚪'}.get(e.get('type', ''), '')
-                lines.append(f"   {type_label} {e.get('source', 'N/A')} → {e.get('target', 'N/A')}")
-        
+            lines.append("**关键关系：**")
+            lines.append("")
+            lines.append("| 起点 | 终点 | 类型 |")
+            lines.append("|------|------|------|")
+            type_label_map = {'positive': '正面评价', 'negative': '负面评价', 'neutral': '中性提及'}
+            for e in edges[:10]:
+                t = type_label_map.get(e.get('type', ''), e.get('type', ''))
+                lines.append(f"| {e.get('source', 'N/A')} | {e.get('target', 'N/A')} | {t} |")
+
         return "\n".join(lines)
     
     return json.dumps(result, ensure_ascii=False, indent=2)
